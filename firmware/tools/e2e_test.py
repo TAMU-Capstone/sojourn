@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""e2e_test.py — end-to-end verification of the Sojourn reference firmware.
+
+Boots the ROM under QEMU (mps2-an386), talks to the probe over its UART
+(TCP serial) and over the GDB stub (raw RSP), and verifies the behaviors
+the platform will build on:
+
+  1  boot banner + telemetry framing (sync, CRC, channel decode)
+  2  PING / STAT / NOOP round-trips, bad-CRC NAK E01, unknown-verb E02
+  3  PEEK of the sensor block; live sensor data via the GDB stub
+  4  POKE protection: ROM -> E04, system RAM -> E04, unmapped -> E03
+  5  Objective 1 flow: POKE MAG CTRL off -> channel vanishes, load drops
+  6  Camera: CAPTURE_NOW -> frame_id, stats, channel 0x43; exposure change
+     moves SAT_PCT/STARS the right way
+  7  Brick + recovery: disable the wdg_pet task via the task table ->
+     watchdog reset within ~3 s -> reboots+1, uptime reset, patches gone
+
+Run from firmware/:  python3 tools/e2e_test.py
+"""
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+QEMU_BIN = os.environ.get("QEMU_BIN", "qemu-system-arm")
+SER_PORT = int(os.environ.get("SER_PORT", 5599))
+GDB_PORT = int(os.environ.get("GDB_PORT", 3344))
+
+SENS_BASE = 0x2001E000
+CAM_BASE = 0x2001E100
+SLOT = {"MAG": 0, "IMU": 1, "THM": 2, "PWR": 3, "RAD": 4, "STR": 5, "CAM": 6}
+
+passed, failed = 0, 0
+def check(name, cond, detail=""):
+    global passed, failed
+    ok = bool(cond)
+    passed += ok; failed += (not ok)
+    print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f"  ({detail})" if detail and not ok else ""))
+    return ok
+
+def crc16(data: bytes) -> int:
+    crc = 0xFFFF
+    for b in data:
+        crc ^= b << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc
+
+# ---------------- serial (probe UART over TCP) ----------------
+class Probe:
+    def __init__(self):
+        self.buf = b""
+        self.sock = None
+
+    def connect(self):
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            try:
+                self.sock = socket.create_connection(("127.0.0.1", SER_PORT), 1)
+                self.sock.settimeout(0.2)
+                return
+            except OSError:
+                time.sleep(0.2)
+        raise RuntimeError("cannot connect to QEMU serial")
+
+    def readline(self, timeout=10.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            if b"\n" in self.buf:
+                line, self.buf = self.buf.split(b"\n", 1)
+                s = line.decode(errors="replace").strip()
+                if s:
+                    return s
+                continue
+            try:
+                d = self.sock.recv(4096)
+                if d:
+                    self.buf += d
+            except socket.timeout:
+                pass
+        return None
+
+    def wait_for(self, pred, timeout=15.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            line = self.readline(min(2.0, max(0.1, end - time.time())))
+            if line is not None and pred(line):
+                return line
+        return None
+
+    def cmd(self, text, timeout=5.0):
+        """Send with correct CRC; return first ACK/NAK line."""
+        full = f"{text} *{crc16(text.encode() + b' '):04X}\r\n"
+        self.sock.sendall(full.encode())
+        return self.wait_for(lambda l: l.startswith(("ACK", "NAK")), timeout)
+
+    def raw(self, text, timeout=5.0):
+        self.sock.sendall((text + "\r\n").encode())
+        return self.wait_for(lambda l: l.startswith(("ACK", "NAK")), timeout)
+
+# ---------------- telemetry decoding ----------------
+def parse_tlm(line):
+    if not line.startswith("TLM "):
+        return None
+    raw = bytes.fromhex(line[4:])
+    if len(raw) < 5 or raw[0] != 0xEB or raw[1] != 0x90:
+        return None
+    paylen = raw[2]
+    payload = raw[3:3 + paylen]
+    crc = int.from_bytes(raw[3 + paylen:5 + paylen], "big")
+    if crc16(raw[2:3 + paylen]) != crc:
+        return {"crc_ok": False}
+    f = {
+        "crc_ok": True,
+        "frame": int.from_bytes(payload[0:2], "big"),
+        "uptime": int.from_bytes(payload[2:6], "big"),
+        "mode": payload[6], "reboots": payload[7], "fault": payload[8],
+        "bus_mv": int.from_bytes(payload[9:11], "big"),
+        "load_mw": int.from_bytes(payload[11:13], "big"),
+        "ch": {},
+    }
+    i = 13
+    while i + 2 <= len(payload):
+        cid, clen = payload[i], payload[i + 1]
+        f["ch"][cid] = payload[i + 2:i + 2 + clen]
+        i += 2 + clen
+    return f
+
+def next_tlm(p, timeout=12.0):
+    line = p.wait_for(lambda l: l.startswith("TLM "), timeout)
+    return parse_tlm(line) if line else None
+
+# ---------------- GDB remote serial protocol ----------------
+def gdb_read_mem(addr, length):
+    """One-shot: connect (halts VM), read, detach (resumes)."""
+    s = socket.create_connection(("127.0.0.1", GDB_PORT), 5)
+    s.settimeout(3)
+    def send(payload):
+        cs = sum(payload.encode()) & 0xFF
+        s.sendall(f"+${payload}#{cs:02x}".encode())
+    def recv_packet():
+        data = b""
+        while True:
+            d = s.recv(4096)
+            if not d:
+                return None
+            data += d
+            if b"#" in data and len(data) >= data.index(b"#") + 3:
+                start = data.index(b"$") + 1
+                return data[start:data.index(b"#")].decode()
+    send(f"m{addr:08x},{length:x}")
+    reply = recv_packet()
+    send("D")               # detach: VM resumes
+    try:
+        s.recv(64)
+    except OSError:
+        pass
+    s.close()
+    return bytes.fromhex(reply) if reply and "E" != reply[:1] else None
+
+# ---------------- the test run ----------------
+def main():
+    subprocess.run(["make", "-C", str(ROOT)], check=True, capture_output=True)
+    symbols = json.load(open(ROOT / "build" / "symbols.json"))["symbols"]
+    task_table = int(symbols["task_table"], 16)
+
+    qemu = subprocess.Popen(
+        [QEMU_BIN, "-M", "mps2-an386", "-nographic", "-monitor", "none",
+         "-kernel", str(ROOT / "build" / "probe_rom.elf"),
+         "-serial", f"tcp:127.0.0.1:{SER_PORT},server=on,wait=on",
+         "-gdb", f"tcp::{GDB_PORT}"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        p = Probe()
+        p.connect()
+
+        print("== 1. boot & telemetry framing ==")
+        banner = p.wait_for(lambda l: "SOJOURN FSW" in l, 15)
+        check("boot banner", banner and "reboots=0" in banner, banner)
+        f = next_tlm(p)
+        check("telemetry frame CRC", f and f["crc_ok"])
+        check("nominal mode", f and f["mode"] == 1)
+        check("all six sensor channels present",
+              f and all(SLOT[k] in f["ch"] for k in ("MAG", "IMU", "THM", "PWR", "RAD", "STR")),
+              str(sorted(f["ch"]. keys()) if f else None))
+        check("AUX channel present (0x5A)", f and 0x5A in f["ch"])
+        base_load = f["load_mw"] if f else 0
+        check("bus load plausible", f and 700 <= base_load <= 1100, str(base_load))
+
+        print("== 2. command protocol ==")
+        check("PING", p.cmd("PING") == "ACK PING")
+        check("NOOP", p.cmd("NOOP") == "ACK NOOP")
+        r = p.cmd("STAT")
+        check("STAT", r and r.startswith("ACK STAT mode=1") and "reboots=0" in r, r)
+        check("bad CRC -> E01", p.raw("PING *0000") == "NAK E01")
+        check("unknown verb -> E02", p.cmd("WARP 9") == "NAK E02")
+        check("bad args -> E05", p.cmd("PEEK zz 4") == "NAK E05")
+
+        print("== 3. introspection ==")
+        r = p.cmd(f"PEEK 0x{SENS_BASE:08X} 16")
+        check("PEEK sensor block", r and r.startswith("ACK PEEK ") and len(r) == 9 + 32, r)
+        mag_ctrl = bytes.fromhex(r.split()[-1])[0] if r and r.startswith("ACK PEEK") else 0
+        check("MAG powered (CTRL bit0)", mag_ctrl & 1)
+        m1 = gdb_read_mem(SENS_BASE, 0x60)
+        time.sleep(1.5)
+        m2 = gdb_read_mem(SENS_BASE, 0x60)
+        check("GDB stub reads sensor block", m1 is not None and m2 is not None)
+        check("sensor registers are live (data changes)", m1 != m2)
+
+        print("== 4. POKE protection ==")
+        check("POKE ROM -> E04", p.cmd("POKE 0x00001000 00") == "NAK E04")
+        check("POKE golden image -> E04", p.cmd("POKE 0x00004000 00") == "NAK E04")
+        check("POKE NOINIT -> E04", p.cmd("POKE 0x20000000 00") == "NAK E04")
+        check("POKE system block -> E04", p.cmd("POKE 0x20000104 00") == "NAK E04")
+        check("POKE unmapped -> E03", p.cmd("POKE 0x40000000 00") == "NAK E03")
+
+        print("== 5. objective 1: power down the magnetometer ==")
+        r = p.cmd(f"POKE 0x{SENS_BASE:08X} 00000000")
+        check("POKE MAG CTRL", r == "ACK POKE 4", r)
+        f = None
+        for _ in range(3):                    # allow one in-flight frame
+            f = next_tlm(p)
+            if f and SLOT["MAG"] not in f["ch"]:
+                break
+        check("MAG channel vanished", f and SLOT["MAG"] not in f["ch"],
+              str(sorted(f["ch"].keys()) if f else None))
+        check("bus load dropped >= 150 mW", f and base_load - f["load_mw"] >= 150,
+              f"{base_load} -> {f['load_mw'] if f else '?'}")
+
+        print("== 6. camera ==")
+        r = p.cmd(f"POKE 0x{CAM_BASE:08X} 03")     # CAPTURE_NOW | AUTO
+        check("trigger capture", r == "ACK POKE 1", r)
+        time.sleep(2.5)
+        r = p.cmd(f"PEEK 0x{CAM_BASE + 0x14:08X} 4")
+        fid = int.from_bytes(bytes.fromhex(r.split()[-1]), "little") if r and "PEEK" in r else 0
+        check("frame captured (FRAME_ID > 0)", fid > 0, r)
+        f = next_tlm(p)
+        check("camera channel 0x43 in telemetry", f and 0x43 in f["ch"])
+        stats1 = f["ch"].get(0x43, b"") if f else b""
+        sat1 = int.from_bytes(stats1[8:10], "big") if len(stats1) >= 12 else -1
+        stars1 = int.from_bytes(stats1[10:12], "big") if len(stats1) >= 12 else -1
+        # gross overexposure: exposure 8000 ms (little-endian u32 at +0x0C)
+        p.cmd(f"POKE 0x{CAM_BASE + 0x0C:08X} 401F0000")
+        p.cmd(f"POKE 0x{CAM_BASE:08X} 03")
+        time.sleep(2.5)
+        f = next_tlm(p)
+        stats2 = f["ch"].get(0x43, b"") if f else b""
+        sat2 = int.from_bytes(stats2[8:10], "big") if len(stats2) >= 12 else -1
+        stars2 = int.from_bytes(stats2[10:12], "big") if len(stats2) >= 12 else -1
+        check("overexposure raises SAT_PCT", sat2 > sat1, f"{sat1} -> {sat2}")
+        check("overexposure washes out stars", stars2 < stars1, f"{stars1} -> {stars2}")
+
+        print("== 7. brick and recover (watchdog) ==")
+        wdg_flags = task_table + 3 * 16 + 12      # entry 3 = wdg_pet, flags @ +12
+        r = p.cmd(f"POKE 0x{wdg_flags:08X} 00")
+        check("disable wdg_pet task", r == "ACK POKE 1", r)
+        banner = p.wait_for(lambda l: "SOJOURN FSW" in l, 15)
+        check("watchdog rebooted the probe", banner is not None, "no reboot banner")
+        check("reboot counter incremented", banner and "reboots=1" in banner, banner)
+        check("fault code = WDG(1)", banner and "fault=1" in banner, banner)
+        f = next_tlm(p)
+        check("uptime reset", f and f["uptime"] <= 10, str(f["uptime"] if f else None))
+        check("golden image restored (MAG channel back)", f and SLOT["MAG"] in f["ch"])
+        r = p.cmd("STAT")
+        check("post-recovery STAT", r and "reboots=1" in r and "mode=1" in r, r)
+
+        print(f"\n{passed} passed, {failed} failed")
+        return 1 if failed else 0
+    finally:
+        qemu.kill()
+
+if __name__ == "__main__":
+    sys.exit(main())
