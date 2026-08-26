@@ -1,0 +1,226 @@
+# Probe Flight Firmware — Design Specification
+
+| | |
+|---|---|
+| **Document** | Golden-Image Flight Firmware, Engineering Design Specification |
+| **Project** | "Sojourn" Reverse Engineering Game Platform |
+| **Version** | 0.2 (Draft for sponsor review — adds imaging subsystem, §6.1) |
+| **Date** | August 26, 2026 |
+| **Authors** | Trevor Bakker (sponsor) with Claude |
+| **Audience** | Instructor and capstone team. **This document is not player-facing** — the player-facing *Recovered Mission Operations Manual* is derived from it with deliberate omissions (§14). |
+
+---
+
+## 1. Purpose & Scope
+
+This specifies the **instructor-supplied reference firmware**: a working, bootable flight program for the emulated probe, handed to the capstone team on day one as their golden image. Run under QEMU or Renode, it boots, simulates active sensors, emits downlink telemetry, and answers uplink commands — before any platform code exists. The team builds the game platform *around* it.
+
+The spec covers the firmware proper, its memory map, its two-tier sensor simulation, its command and telemetry interfaces, and the toolchain that builds and runs it. Scenario content (objectives, fiction, the recovered manual's exact text) is out of scope here except where the firmware must provide hooks for it.
+
+## 2. Design Constraints (imposed by the game)
+
+The firmware is a game board disguised as flight software. Every design choice below serves one of these constraints:
+
+- **C1 — Patchable in flight.** Application code must execute from RAM so `POKE` can modify code, not just data. (Real precedent: Voyager's FDS executes from patchable memory.)
+- **C2 — Brickable and recoverable.** A destructive patch must be able to hang the probe, and a watchdog must restore a pristine image without player intervention, observably (reboot counter, uptime reset).
+- **C3 — Analyzable in stock Ghidra.** ARM Thumb-2, conventional layout, no obfuscation. Difficulty comes from scale and missing documentation, never from anti-analysis tricks.
+- **C4 — Observable effects.** Every meaningful state change must surface in telemetry or be readable by the daemon via the introspection channel, so objectives verify effects rather than methods.
+- **C5 — Multiple valid solutions.** Key behaviors (e.g., a sensor contributing to telemetry) must depend on more than one patchable point, so different attack strategies all work — and can be distinguished for partial-progress feedback.
+- **C6 — Content seam.** Firmware-specific knowledge (addresses, formats) must live in the scenario package, not in platform code. The firmware build must emit machine-readable artifacts (symbol map, memory map) for scenario authoring.
+
+## 3. Target Platform & Toolchain
+
+| Item | Choice | Rationale |
+|---|---|---|
+| CPU core | ARM Cortex-M4 (no FPU dependence) | Thumb-2 only; Ghidra-clean; spacecraft-class; QEMU & Renode both model it |
+| Primary emulator | QEMU `-M mps2-an386` | Ships in stock QEMU; Cortex-M4; simple CMSDK UART |
+| Fallback emulator | QEMU `-M lm3s6965evb` (Cortex-M3) | Ubiquitous, extremely well documented; build flag switches UART driver |
+| End-state emulator | Renode, custom `.repl` platform | Scripted Python peripherals for harness-tier sensors (§6) |
+| Toolchain | `arm-none-eabi-gcc`, `-mthumb -Os`, GNU LD scripts, `objcopy` | Standard, free, reproducible |
+| Languages | C11 + a few lines of startup assembly | Team-readable; Ghidra decompiles it well |
+| Debug/introspection | GDB remote serial protocol (`-gdb tcp::3333`) / Renode monitor | The daemon's window into memory & registers |
+
+UART base addresses differ per machine (CMSDK UART0 at `0x40004000` on MPS2; PL011 at `0x4000C000` on LM3S) — the HAL isolates this behind `board.h`, and exact register offsets are confirmed at bring-up, not trusted from this document.
+
+## 4. Memory Map
+
+Logical layout, enforced by linker scripts and by the `POKE` handler's protection table. Addresses are the specification; emulator RAM sizing must simply cover them.
+
+| Region | Range | Size | Contents | POKE |
+|---|---|---|---|---|
+| ROM | `0x0000_0000 – 0x0000_03FF` | 1 KiB | Boot vector table | refused (`E04 PROT`) |
+| ROM | `0x0000_0400 – 0x0000_3FFF` | 15 KiB | Bootloader + ROM services (§5) | refused |
+| ROM | `0x0000_4000 – 0x0002_3FFF` | 128 KiB | **Golden application image** + CRC32 trailer | refused |
+| SRAM | `0x2000_0000 – 0x2000_00FF` | 256 B | NOINIT persistent block: reboot counter, last-fault code (survives watchdog reset) | refused |
+| SRAM | `0x2000_0100 – 0x2000_0FFF` | 3.75 KiB | Bootloader/system data, watchdog counter | refused |
+| SRAM | `0x2000_1000 – 0x2001_8FFF` | 96 KiB | **APP region**: application code + rodata, copied from golden image at boot, executes in place | writable |
+| SRAM | `0x2001_9000 – 0x2001_CFFF` | 16 KiB | App `.data`/`.bss`, heap, incl. task table (§7) | writable |
+| SRAM | `0x2001_D000 – 0x2001_DFFF` | 4 KiB | Unused ("free RAM") — the intended, but undocumented, code-injection landing zone | writable |
+| SRAM | `0x2001_E000 – 0x2001_EFFF` | 4 KiB | **Sensor register block** (SIM tier, §6) | writable* |
+| SRAM | `0x2001_F000 – 0x2001_FFFF` | 4 KiB | Stacks (main + handler) | writable |
+| SRAM | `0x2002_0000 – 0x2002_0FFF` | 4 KiB | **CAM frame buffer** — most recent image, raw 64×64 8-bit grayscale (§6.1) | writable |
+
+*Writable by design: poking a sensor's CTRL register is a legitimate solution path (C5). In the harness tier this block becomes true MMIO at the same addresses.
+
+Everything a player can brick is restored at reset (the APP copy, data, stacks); everything that must survive a brick is protected (ROM, NOINIT, system block). The protection table itself lives in ROM.
+
+## 5. Boot Sequence & Golden-Image Recovery
+
+1. **Reset** (power-on or watchdog). Core fetches SP/PC from the ROM vector table; bootloader runs.
+2. Bootloader increments the **reboot counter** and records the pending fault code in NOINIT.
+3. Bootloader **copies the golden application image from ROM to the APP region** — unconditionally, every boot. Recovery is not a special case; it is the only case. (CRC32 check of ROM image is a sanity assertion, not a recovery branch.)
+4. Bootloader initializes SysTick and the watchdog service (§10), sets `VTOR` to the application vector table at `0x2000_1000`, and jumps to the application entry point.
+5. Application enters `MODE_BOOT`, runs self-init (sensor block bring-up, task table init), and transitions to `MODE_NOMINAL`. First telemetry frame is on the wire within one telemetry period.
+
+Consequences for gameplay: a watchdog reset silently discards **all** player patches (they were in RAM), while the reboot counter and fault code — visible in the next telemetry frame — tell the player exactly what happened. Re-applying patches from command history is intended workflow, which is why the daemon, not the probe, owns command logging.
+
+## 6. Sensor Subsystem — Two Tiers, One Interface
+
+The firmware sees sensors only through a fixed **register block** (base `0x2001_E000`): 8 slots × 16 bytes.
+
+| Offset | Register | Meaning |
+|---|---|---|
+| +0x00 | `CTRL` (u32) | bit0 `POWER` (1 = powered). Other bits reserved. |
+| +0x04 | `STATUS` (u32) | bit0 `READY` (data valid), bit1 `FAULT` (degraded/failing) |
+| +0x08 | `DATA` (s32) | Latest reading, sensor-specific units |
+| +0x0C | `POWER_MW` (u32) | Current draw in mW (0 when unpowered) |
+
+| Slot | ID | Sensor | Nominal behavior (SIM tier) |
+|---|---|---|---|
+| 0 | `MAG` | Magnetometer | Slow sinusoidal field + noise; scripted degradation raises `FAULT`, noise floor, and power draw |
+| 1 | `IMU` | Inertial unit | Small random-walk rates |
+| 2 | `THM` | Thermal | Slow drift correlated with total power draw |
+| 3 | `PWR` | Bus monitor | Bus mV ≈ constant; mA tracks sum of sensor `POWER_MW` |
+| 4 | `RAD` | Radiation counter | Poisson-ish counts; occasional bursts |
+| 5 | `STR` | Star tracker | Attitude quaternion component; high power cost |
+| 6 | `CAM` | Imaging camera | Power/status/draw for the imaging subsystem; full control interface in §6.1 |
+| 7 | — | Empty slot | `READY=0`; reserved for future scenarios |
+
+**SIM tier (prototype, plain QEMU).** A `physics_tick` task inside the firmware updates the block each cycle: deterministic xorshift PRNG (seeded from a ROM constant, so runs are reproducible), baselines, drift, noise, and power accounting. Behind the `sensor_read()`/HAL seam, nothing else in the firmware knows the physics is onboard. A player in Ghidra *can* find the physics code — that is acceptable and even instructive for the prototype; it is compiled to be unremarkable.
+
+**Harness tier (end state, Renode).** The register block becomes memory-mapped peripherals implemented as Renode Python peripherals at the same addresses; `physics_tick` is compiled out (build flag `SENSOR_TIER=HW`). Physics, degradation schedules, and fault injection move into the scenario package as harness scripts — invisible to disassembly and controllable per scenario. **The register layout above is the contract that makes the two tiers swappable.**
+
+Sensor participation in telemetry requires **two** independent conditions (C5): the slot's `CTRL.POWER` bit is set, **and** the application's polling entry for that sensor is enabled in the task/polling table (§7). Cutting power saves watts and empties the channel; disabling polling empties the channel but leaves the draw — the classic partial-progress distinction the scenario exploits.
+
+### 6.1 Imaging Subsystem (CAM)
+
+The camera is deliberately richer than the simple sensors: it is the **parameter-rich subsystem** that powers "change the target," "fix the exposure," and "downlink an image" missions. Its power/status/draw live in sensor slot 6 like any other sensor; its control interface is an **extended register block** at `0x2001_E100` (64 bytes):
+
+| Offset | Register | Meaning |
+|---|---|---|
+| +0x00 | `CCTRL` (u32) | bit0 `CAPTURE_NOW` (one-shot, self-clearing), bit1 `AUTO` (scheduled captures) |
+| +0x04 | `CSTAT` (u32) | bit0 `READY`, bit1 `BUSY`, bit2 `POINT_ERR` (no attitude reference) |
+| +0x08 | `TARGET` (u32) | Index into the target catalog (config block) |
+| +0x0C | `EXPOSURE_MS` (u32) | Exposure time, 1–10 000 ms |
+| +0x10 | `GAIN` (u16) + `BINNING` (u16) | Analog gain; pixel binning factor |
+| +0x14 | `FRAME_ID` (u32) | Increments on every completed capture |
+| +0x18 | `FRAME_ADDR` (u32) + `FRAME_LEN` (u32) | Location and size of the latest frame (the frame buffer, §4) |
+| +0x20 | `HIST_MEAN`, `HIST_MAX`, `SAT_PCT`, `STARS` (4 × u32) | Post-capture statistics: mean and peak brightness, % saturated pixels, star-detection count |
+
+**Target catalog.** An array in the app config block — `{RA u16, DEC s16, magnitude u8, flags u8}` per entry. Retargeting has two honest solutions (C5): patch the `TARGET` index, or patch the catalog entry it points at.
+
+**Image synthesis.** Captures are deterministic in `(target, exposure, gain, binning)`. SIM tier: a procedural star field — star positions drawn from the PRNG seeded by the catalog entry, pixel brightness scaled by exposure × gain, clipping into saturation when overexposed; `STARS` counts above-threshold detections. Harness tier: a Renode peripheral renders the frame and writes the buffer over the same register contract. Either way the statistics registers are computed from the actual pixels, so exposure objectives are verifiable from telemetry alone: an overexposed frame shows high `SAT_PCT` and few `STARS`; a corrected one shows the reverse.
+
+**Capture paths.** A `cam_capture` task in the task table (§7) services `AUTO` mode; `CAPTURE_NOW` gives one-shots. Capturing requires an attitude reference — star-tracker lock or the sun-sensor fallback — otherwise `CSTAT.POINT_ERR` is raised and the frame is not taken: a deliberate cross-subsystem dependency (power down `STR` carelessly and imaging objectives start failing).
+
+**Image downlink.** Pixels never ride in telemetry — only the stats channel (§9). Recovering an actual image means `PEEK`-dumping the 4 KiB frame buffer, 64 bytes per command, under the uplink budget — the same slow, deliberate pain as a real deep-space image downlink. The ground-station console may reassemble dumped frames into a viewable image (a platform/frontend feature, not a firmware one). Whether to later add a bulk `DUMP` verb is a scenario-difficulty decision (§15).
+
+## 7. Application Structure — Cooperative Scheduler
+
+The application is a single-threaded cooperative loop over a **task table** in app data (found, not documented):
+
+| Field | Type | Notes |
+|---|---|---|
+| `handler` | function pointer | `NULL` = empty slot, skipped |
+| `period` | u32 ticks | 0 = every cycle |
+| `countdown` | u32 | Decremented per tick |
+| `flags` | u32 | bit0 `ENABLED` |
+
+Shipped tasks: `sensor_poll` (reads register block per polling config), `telemetry_send` (§9), `cmd_process` (§8), `wdg_pet` (§10), `fault_monitor` (raises `SAFE` mode on persistent sensor faults), `physics_tick` (SIM tier only). The table ships with **two empty slots**. The intended (never required) path for the code-injection objective: write a routine into free RAM, then `POKE` a handler pointer and flags into an empty slot. The main loop validates nothing — a bad pointer hard-faults, the watchdog fires, and the probe recovers (C2).
+
+A small **config block** in app data holds tunables: telemetry period, safe-mode thresholds, comms parameters. It is the target surface for "change mission parameters" objectives.
+
+## 8. Uplink Command Protocol (UART, line-based)
+
+Format: `VERB [args] *CCCC` — ASCII, space-delimited, terminated `\n`, where `CCCC` is CRC-16/CCITT (hex) over everything before the `*`. Addresses and bytes in hex.
+
+| Verb | Args | Action | Reply |
+|---|---|---|---|
+| `PING` | — | Liveness | `ACK PING` |
+| `PEEK` | addr len (≤64) | Read memory | `ACK PEEK <hexbytes>` |
+| `POKE` | addr bytes (≤32 B) | Write memory (protection table checked) | `ACK POKE <n>` |
+| `STAT` | — | Mode, uptime, reboots, last fault | `ACK STAT <fields>` |
+| `SAFE` | — | Enter safe mode | `ACK SAFE` |
+| `NOOP` | — | Accepted, no action | `ACK NOOP` |
+
+Error replies: `NAK E01` bad CRC · `E02` unknown verb · `E03` unmapped address · `E04` protected region · `E05` bad length/args · `E06` busy. The ACK/NAK layer is deliberately dumb: it confirms *receipt and execution*, never mission effect (charter R1). Transmission delay and uplink budget are enforced by the game daemon, not the probe; the probe answers as fast as it can.
+
+Deliberate omission: there is no `CALL` verb. Executing injected code requires hooking the task table (or patching a call site) — keeping the hardest objective an act of understanding, not a built-in convenience. Adding `CALL` later is a one-line scenario-difficulty decision; the dispatcher is table-driven to make that trivial.
+
+## 9. Downlink Telemetry Format
+
+One frame per telemetry period (default 5 s, config block), emitted as a hex-encoded line prefixed `TLM ` on the UART. Binary layout:
+
+| Field | Size | Notes |
+|---|---|---|
+| SYNC | 2 B | `0xEB90` |
+| LEN | 1 B | Payload length |
+| FRAME_CNT | 2 B | Wraps |
+| UPTIME | 4 B | Seconds since boot — resets on watchdog recovery |
+| MODE | 1 B | `0` BOOT, `1` NOMINAL, `2` SAFE |
+| REBOOTS | 1 B | From NOINIT — survives recovery |
+| LAST_FAULT | 1 B | Fault code of most recent reset |
+| BUS_MV / LOAD_MW | 2+2 B | From PWR sensor; LOAD is the honest sum of sensor draw |
+| Channels | TLV × n | One `{ID u8, LEN u8, VALUE}` per sensor that is powered **and** polled; absent otherwise |
+| CAM | TLV | Channel `0x43`: capture metadata — frame id, target index, exposure, `HIST_MEAN`, `SAT_PCT`, `STARS` (present only after at least one capture) |
+| AUX | TLV | Channel `0x5A`: undocumented in the player manual (charter R10) — content TBD with scenario (candidate: CRC of last accepted command, closing the feedback loop for attentive players) |
+| CRC | 2 B | CRC-16/CCITT over frame after SYNC |
+
+Design intent: the frame is decodable from the recovered manual plus observation; a disabled sensor *vanishes* rather than reading zero — the difference is the game's primary success signal and is trivially assertable by the daemon.
+
+## 10. Watchdog & Fault Handling
+
+The watchdog is a down-counter in the protected system block, decremented by the bootloader-owned SysTick handler — outside the patchable APP region, so it cannot be patched away (C2). The application's `wdg_pet` task reloads it through a ROM service call. Expiry → system reset via `AIRCR.SYSRESETREQ` with fault code `WDG` recorded; hard faults, bus faults, and usage faults likewise record codes and reset. Patching out `wdg_pet`, corrupting the scheduler, or jumping into garbage all funnel into the same observable recovery path. `MODE_SAFE` (entered by `fault_monitor` or the `SAFE` verb) drops telemetry to a minimal frame and de-powers non-essential sensors — scenario-usable both as a hazard and as a tool.
+
+## 11. Build Artifacts & the Content Seam
+
+Each build emits, for the scenario package and daemon (C6): `probe_rom.elf` (full symbols — **instructor/author side only**), `probe_rom.bin` (what QEMU boots), `probe_app.bin` (stripped application image — **the player's `probe.bin`**), `symbols.json` (machine-readable map of every address named in this spec), and `memmap.json` (regions + protection table). Objective assertions in scenario packages reference `symbols.json` names, not raw addresses, so firmware rebuilds don't silently break scenarios.
+
+## 12. Running & Introspection
+
+```
+qemu-system-arm -M mps2-an386 -kernel probe_rom.elf \
+    -nographic -serial mon:stdio -gdb tcp::3333
+```
+
+The serial console shows `TLM` lines immediately; commands are typed (or piped) on the same UART. The daemon — or a student, or you — attaches GDB to port 3333 and reads live state, e.g. `x/8wx 0x2001E000` to watch the magnetometer's registers move while the simulated sensor runs. That command, sixty seconds after handing over the container, is the "see register values as if the sensors were active" demo. Renode substitutes its monitor (`sysbus ReadDoubleWord ...`) with identical observable behavior.
+
+## 13. Patch Surface vs. Difficulty Ramp
+
+How the charter's four-step ramp (R9) maps onto this design — each objective has at least two honest solutions:
+
+| Objective | Intended surfaces (non-exhaustive) |
+|---|---|
+| 1. Disable failing sensor | MAG `CTRL.POWER` bit; or its polling-table enable flag (partial: power still drawn) |
+| 2. Change mission parameter | Telemetry period / comms tunable in the config block |
+| 3. Patch code | `fault_monitor` comparison or branch (stop spurious safe-mode trips); NOP a call site |
+| 4. Inject functionality | Routine into free RAM (`0x2001_D000`) + hook an empty task-table slot or patch a call |
+| Camera missions (reference-scenario extras or scenario #2) | Retarget: `TARGET` register or a catalog entry. Fix exposure: `EXPOSURE_MS`/`GAIN`, verified by `SAT_PCT` falling and `STARS` rising in channel `0x43`. Image downlink: `PEEK`-dump the frame buffer under the uplink budget |
+
+## 14. Documentation Split (spec → player manual)
+
+The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pages lost"): players **get** the command protocol (§8), the telemetry format minus AUX (§9), the coarse memory map (ROM / APP / data regions and the protection rules — not the internal layout), the sensor list with slot IDs, boot/watchdog behavior described operationally, and the camera's basic operating registers (`CCTRL`, `EXPOSURE_MS`, `GAIN`, the stats registers) — presented as a surviving excerpt of the imaging handbook. Players **do not get**: task-table location or format, config-block layout (including the **target catalog's** location and entry format — finding it *is* the retargeting mission), free-RAM region, frame-buffer address (discoverable via `FRAME_ADDR`), the physics/synthesis module, AUX channel, or any symbol file. Everything withheld is discoverable in the binary — that's the game.
+
+## 15. Open Questions for Sponsor Review
+
+1. **Sensor suite & fiction**: is the lineup (§6) — six sensors plus the imaging subsystem — right, and do the names fit the mission fiction you want?
+2. **`CALL` verb**: agreed to omit (§8), or do you want it present but protection-gated as an easier on-ramp for a future intro course?
+3. **AUX channel content** (§9): command-CRC echo, or something more scenario-specific?
+4. **Cortex-M4 vs M3**: M4 on MPS2 is primary; any institutional reason to prefer the LM3S/M3 fallback as primary?
+5. **Reproducibility**: fixed PRNG seed (reproducible runs, easier grading/debugging) vs per-boot seed (livelier feel) — current spec says fixed.
+6. **Telemetry cadence**: 5 s default is tuned for classroom pacing; confirm.
+7. **Image downlink ergonomics**: keep the pure `PEEK`-dump (≈64 commands per frame — deliberate, authentic pain) or add a bulk `DUMP` verb for lower-friction image missions? Could also be scenario-gated: `DUMP` exists but is disabled until a player patches it back on.
+
+---
+
+*Version 0.1 — on approval, next steps are bring-up of the bootloader + UART + telemetry skeleton under QEMU, then the sensor SIM tier, then the command interpreter — at which point the golden-image demo in §12 is live.*
