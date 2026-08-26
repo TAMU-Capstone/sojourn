@@ -6,6 +6,8 @@
 #   make run        boot it under QEMU (Ctrl-A X to quit)
 #   make gdbserver  boot halted, GDB stub on :3333
 #   make gdb        attach a cross-gdb to a running gdbserver
+#   make tlm        boot the probe and stream DECODED telemetry
+#   make run-tcp    boot with UART on tcp:5599 (attach decoder/console to it)
 #   make test       run the 36-check end-to-end suite
 #   make clean
 
@@ -72,6 +74,12 @@ gdbserver: all
 
 gdb:
 	$(GDB) -ex 'target remote :3333' $(ROM_ELF)
+
+tlm: all
+	$(PYTHON) tools/tlm_decode.py --spawn $(ROM_ELF)
+
+run-tcp: all
+	$(QEMU) -kernel $(ROM_ELF) -serial tcp:127.0.0.1:5599,server=on,wait=off
 
 test: all
 	$(PYTHON) tools/e2e_test.py

@@ -40,6 +40,8 @@ typically already present).
     make run        # boot under QEMU; telemetry appears immediately (Ctrl-A X quits)
     make gdbserver  # same, halted, GDB stub on :3333
     make gdb        # attach the cross-gdb it finds (arm-none-eabi-gdb or gdb-multiarch)
+    make tlm        # boot the probe and stream DECODED telemetry (see below)
+    make run-tcp    # boot with the UART on tcp:5599 (one client at a time)
     make test       # 36-check end-to-end suite
 
 Overridable: `make CROSS=... QEMU_BIN=... PYTHON=...` if your tools have
@@ -70,6 +72,27 @@ Watch the sensors live from a second terminal while `make gdbserver` runs:
 
     make gdb
     (gdb) x/8wx 0x2001E000        # magnetometer slot, updating live
+
+## Ground-side telemetry decoder
+
+`tools/tlm_decode.py` is the reference receiver/decoder for the downlink
+format — the game daemon should decode frames exactly the way it does.
+It validates CRCs, decodes every channel with units, and flags events:
+channel loss/acquisition, reboots, mode changes, camera captures.
+
+    make tlm                                   # boot + live decoded stream
+    python3 tools/tlm_decode.py --connect 127.0.0.1:5599   # attach to make run-tcp
+    python3 tools/tlm_decode.py --file capture.txt         # decode a saved log
+    python3 tools/tlm_decode.py --json         # one JSON object per frame
+
+Sample output (objective 1 being solved):
+
+    [0001] up=    10s NOMINAL reboots=0 fault=-  bus=3.303V load=775mW
+           MAG    58 nT | IMU  0.02 °/s | THM 21.2 °C | PWR 3303 mV | ...
+         ! CAM capture #1: target=0 exp=250ms mean=4 sat=0% stars=9
+    [0002] up=    15s NOMINAL reboots=0 fault=-  bus=3.300V load=595mW
+           IMU  0.11 °/s | THM 21.2 °C | PWR 3300 mV | ...
+         ! channel MAG LOST
 
 ## Verify
 
