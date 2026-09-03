@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Document** | Project Charter and Requirements Specification |
-| **Version** | 0.4 (Draft — normative content from the format, introspection and firmware specifications captured as requirements; §6.8–§6.10 added; R2.2, R3.1, R3.2, R21, R22.1 amended) |
+| **Version** | 0.5 (Draft — QEMU named as the emulation target and Renode deferred with the harness tier; emulation risk downgraded. v0.4 captured the specifications' normative content as requirements; §6.8–§6.10 added; R2.2, R3.1, R3.2, R21, R22.1 amended) |
 | **Date** | September 3, 2026 |
 | **Sponsor** | Trevor Bakker (Instructor) |
 | **Team** | 5–6 Computer Science students, one semester |
@@ -63,9 +63,9 @@ Ground-Station Console  (browser · xterm.js · telemetry feed · uplink line ·
         │ ▼
 Game Daemon  (scenario engine · objective evaluator · uplink/downlink relay ·
               delay & bandwidth sim · command log & saves)
-        ▲ │   virtual UART (command protocol)  +  introspection (GDB stub / monitor API)
+        ▲ │   virtual UART (command protocol)  +  introspection (GDB remote serial protocol)
         │ ▼
-Emulated Probe  (ARM Cortex-M firmware on Renode/QEMU · watchdog & golden image)
+Emulated Probe  (ARM Cortex-M firmware on QEMU · watchdog & golden image)
 
 — all inside one container —
 content: /scenarios/*  (drop-in packages)      mounted volume: /savedata  (saves, command log)
@@ -77,7 +77,9 @@ Bare-metal C for **ARM Cortex-M (Thumb-2)**. Chosen deliberately: it is what Ghi
 
 ### 5.2 Emulation Harness (platform)
 
-Runs the firmware under **Renode (preferred) or QEMU** with: a virtual UART carrying the command protocol, a machine-readable introspection interface (memory reads, register state, execution state) consumed by the game daemon, and watchdog/reset modeling. One probe instance per container — solo play is the design point. **This is the highest-risk component: a "hello probe" (firmware answering a ping over emulated UART, memory readable via introspection) is due by Week 3 (M1).**
+Runs the firmware under **QEMU** (`-M mps2-an386`) with: a virtual UART carrying the command protocol, the GDB remote serial protocol stub the daemon reads memory through (§6.9), and watchdog/reset modeling. One probe instance per container — solo play is the design point. A "hello probe" — firmware answering a ping over the emulated UART, memory readable over introspection — is due by Week 3 (M1).
+
+> **QEMU is the target; Renode is not in scope.** The sponsor-furnished firmware boots, runs and passes its full end-to-end suite under stock QEMU today, so this component starts from a working baseline rather than a research problem. Renode remains the documented end state for the **harness tier** (firmware specification §6), in which the sensor register block becomes emulator-implemented peripherals and the physics leaves the binary — but that is a content-fidelity improvement, not a platform requirement, and it is explicitly out of scope this semester. Nothing is lost by deferring it: both emulators serve the same GDB remote serial protocol, and R24.8 forbids emulator-specific introspection code, so a later team can substitute Renode by configuration without touching the daemon.
 
 ### 5.3 Game Daemon (platform)
 
@@ -252,7 +254,7 @@ Roles for 5–6 students; each owns a component and its documentation and tests.
 | Role | Owns | Key deliverables |
 |---|---|---|
 | **Firmware / Scenario Engineer** | §5.1 | Reference firmware, memory map, golden image, difficulty-ramp objectives, recovered manual (with instructor) |
-| **Emulation Engineer** | §5.2 | Renode/QEMU harness, introspection API, watchdog/reset modeling, M1 "hello probe" |
+| **Emulation Engineer** | §5.2 | QEMU harness, introspection client (§6.9), watchdog/reset modeling, M1 "hello probe" |
 | **Platform Engineer(s)** (1–2) | §5.3, §5.5 | Game daemon, scenario loader, assertion evaluator, delay/budget enforcement, persistence & replay |
 | **Frontend Engineer** | §5.4 | Ground-station console, telemetry feed, mission status panel, diegetic presentation |
 | **Protocol & Integration Engineer** | seams | Uplink/downlink protocol spec, scenario package schema + validation tool (R13), CI, end-to-end test (R20), release engineering |
@@ -274,7 +276,7 @@ With five students, the Protocol & Integration role merges into the Platform rol
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Emulation harness harder than expected | Med | High | M1 gate at week 3; fallback from Renode to plain QEMU + GDB stub; last-resort fallback to an instrumented interpreter for a subset of the firmware |
+| Emulation harness harder than expected | Low | High | Downgraded from Med at v0.5: the firmware already boots and passes 99 end-to-end checks under stock QEMU, so M1 is an integration task rather than a bring-up. M1 gate at week 3 retained; if it slips, the fallback is to drive the probe over the UART alone and defer introspection, accepting telemetry-only objectives until it lands |
 | Assertion language over-engineered | Med | Med | Design it from the reference scenario's real objectives, not speculatively; R12's worked example is the scope fence |
 | Reference scenario content squeezed by platform work | High | Med | Instructor co-authors fiction/docs in parallel from week 1; objectives 1–2 authored against the M2 vertical slice |
 | Team integration late-semester crunch | Med | High | Vertical slice at M2 forces early integration; end-to-end test in CI from M3 |
