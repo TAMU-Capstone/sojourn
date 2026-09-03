@@ -59,12 +59,20 @@ void config_init(void)
     g_config.cam_filter         = FILT_LUT;
     g_config.cam_kdiv           = 1;
 
-    /* Downlink comms. As built the high gain works and carries the whole
-     * frame; a scenario schedules the failure and the squeeze begins. */
-    g_config.comms_enable       = 1;
-    g_config.hga_max_payload    = 96;    /* whole frame fits                */
-    g_config.lga_max_payload    = 40;    /* forces triage                   */
-    g_config.hga_fail_after_s   = 0;     /* 0 = never (healthy as built)    */
+    /* Downlink comms. As built the dish is deployed, pointed and carrying
+     * the whole frame; a scenario schedules the jam and the squeeze
+     * begins. Budgets follow from the rate and the 5 s cadence: the high
+     * gain affords 100 payload bytes, the omni 40. */
+    g_config.comms_enable        = 1;
+    g_config.hga_rate_bps        = 160;  /* -> 100 B/frame: whole frame fits */
+    g_config.lga_rate_bps        = 64;   /* ->  40 B/frame: forces triage    */
+    g_config.hga_deploy_rate_pct = 5;    /* dish travel per second           */
+    g_config.hga_jam_at_pct      = 40;   /* where a failed deployment stalls */
+    g_config.hga_point_tol_mdeg  = 1500; /* 1.5 deg of beam to play with     */
+    g_config.hga_drift_mdeg_s    = 250;  /* -> POINT_ERR ~6 s after STR loss */
+    g_config.comms_tx_mw         = 900;  /* transmitter, keyed               */
+    g_config.hga_point_mw        = 180;  /* dish steering, on top            */
+    g_config.hga_fail_after_s    = 0;    /* 0 = never (healthy as built)     */
 
     g_config.eng_key            = 0x5A3C96E1u; /* engineering-command key    */
 }

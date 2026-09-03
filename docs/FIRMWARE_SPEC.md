@@ -4,8 +4,8 @@
 |---|---|
 | **Document** | Golden-Image Flight Firmware, Engineering Design Specification |
 | **Project** | "Sojourn" Reverse Engineering Game Platform |
-| **Version** | 0.9 (Draft — comms/antenna subsystem; 96×96 scenes; §15 down to one open item) |
-| **Date** | August 26, 2026 |
+| **Version** | 1.0 (Draft — high/low gain antennas modelled as hardware; telemetry cadence fixed at 5 s; §15 closed) |
+| **Date** | September 3, 2026 |
 | **Authors** | Trevor Bakker (sponsor) with Claude |
 | **Audience** | Instructor and capstone team. **This document is not player-facing** — the player-facing *Recovered Mission Operations Manual* is derived from it with deliberate omissions (§14). |
 
@@ -57,7 +57,9 @@ Logical layout, enforced by linker scripts and by the `POKE` handler's protectio
 | SRAM | `0x2000_1000 – 0x2001_8FFF` | 96 KiB | **APP region**: application code + rodata, copied from golden image at boot, executes in place | writable |
 | SRAM | `0x2001_9000 – 0x2001_CFFF` | 16 KiB | App `.data`/`.bss`, heap, incl. task table (§7) | writable |
 | SRAM | `0x2001_D000 – 0x2001_DFFF` | 4 KiB | **Code cave** — undocumented landing zone for injected instructions; 32 × 128 B slots (§6.5) | writable |
-| SRAM | `0x2001_E000 – 0x2001_EFFF` | 4 KiB | **Sensor register block** (SIM tier, §6) | writable* |
+| SRAM | `0x2001_E000 – 0x2001_E0FF` | 256 B | **Sensor register block** — 8 slots × 16 B (SIM tier, §6) | writable* |
+| SRAM | `0x2001_E100 – 0x2001_E1FF` | 256 B | **Camera extended registers** (§6.1) | writable* |
+| SRAM | `0x2001_E200 – 0x2001_EFFF` | 3.5 KiB | **Comms extended registers** — antennas, link state, budget (§6.4b) | writable* |
 | SRAM | `0x2001_F000 – 0x2001_FFFF` | 4 KiB | Stacks (main + handler) | writable |
 | SRAM | `0x2002_0000 – 0x2002_23FF` | 9 KiB | **CAM frame buffer** — most recent image, raw 96×96 8-bit grayscale (§6.1) | writable |
 
@@ -174,25 +176,77 @@ Capture statistics are computed from the written frame, not the source. `STARS` 
 
 **Recovering the picture.** Pixels never ride in telemetry. `tools/img_recover.py` drives the documented downlink — `PEEK` the frame buffer 64 bytes at a time, 64 commands for a full frame — and writes a PNG with a dependency-free encoder (`tools/png.py`, stdlib only). Every action it takes is an ordinary uplink a player could type by hand, including `--invert`, `--threshold`, `--filter blur|sharpen|edge` and `--target N`.
 
-### 6.4b Downlink Comms: Antenna Failure and Bandwidth Triage
+### 6.4b Downlink Comms: Two Antennas, and the Bandwidth They Buy
 
-Real precedent: **Galileo's** high-gain antenna failed to unfurl in 1991, and the mission was saved by reprogramming the spacecraft in flight to run science through the low-gain antenna — new compression, and hard decisions about which data was worth the bandwidth. `comms.c` is that scenario in miniature.
+Real precedent: **Galileo's** high-gain antenna failed to unfurl in 1991 — several ribs stuck in their sockets — and the mission was saved not by freeing the dish but by reprogramming the spacecraft in flight to run science through the low-gain antenna: new compression, and hard decisions about which data was worth the bandwidth. `comms.c` is that scenario in miniature, and it models the dead end as well as the answer.
 
-Sojourn downlinks through one of two antennas. The high gain carries the whole telemetry frame (`hga_max_payload`, 96 bytes as built); the low gain carries a fraction (`lga_max_payload`, 40 bytes), which is less than the frame needs. When the high gain is declared failed, `task_comms` falls back to the low gain and the telemetry encoder begins **emitting channels in the order given by `tlm_priority[]` until the budget is exhausted**, dropping the rest and reporting the count.
+#### The hardware
 
-Nothing is truncated — a partial channel would corrupt the frame — so the squeeze is felt as whole channels disappearing, which the ground sees immediately in the new `COMMS` channel (`0x61`: antenna, dropped count, current budget). The encoder decides what fits *before* it emits, so that count describes the frame carrying it rather than the previous one.
+| | HGA | LGA |
+|---|---|---|
+| Type | Deployable high-gain dish | Fixed low-gain omni |
+| Boresight gain | 34.50 dBi | 8.00 dBi |
+| Deployment | Required — unusable below `HGA_DEPLOY_MIN` (95%) | None |
+| Pointing | Narrow beam; must be held on boresight | None — omnidirectional |
+| Attitude reference | Star tracker (`SLOT_STR`) | None |
+| Extra bus draw | `hga_point_mw` for dish steering | — |
+| Link rate as built | `hga_rate_bps` = 160 bps | `lga_rate_bps` = 64 bps |
 
-Every response a real flight team could make is a patch:
+Both antennas share the transmitter (`comms_tx_mw`, drawn while `XCTRL_TX_EN` is set); the gain is what buys the data rate. That draw is folded into the bus load, so the load-shed manager (§6.4) and the thermal model both see the cost of talking to Earth.
 
-| Response | Surface |
-|---|---|
-| Decide what science is worth the bandwidth | `tlm_priority[]` — the emission order, a byte array in RAM. *This is the Galileo decision.* |
-| Dispute the fault verdict | `g_hga_ok`, or the branch in `task_comms` that acts on it |
-| Cancel the scheduled failure | `hga_fail_after_s` in the config block |
-| Argue with the physics | `lga_max_payload` |
-| Make room by other means | power down sensors, so their channels stop competing |
+#### The comms register block (`0x2001_E200`)
 
-As built the high gain is healthy and `hga_fail_after_s` is `0` (never), so a scenario schedules the failure. Because the fallback is re-evaluated every cycle, clearing the verdict restores the high gain — the fault is a *judgement the software makes*, not a latched state, which is what makes it patchable.
+| Offset | Register | Meaning |
+|---|---|---|
+| `+0x00` | `XCTRL` | bit0 `TX_EN`, bit1 `SEL_LGA`, bit2 `MANUAL`, bit3 `DEPLOY` |
+| `+0x04` | `XSTAT` | bit0 `LINK`, bit1 `HGA_DEPLOYED`, bit2 `HGA_JAM`, bit3 `POINT_ERR`, bit4 `ON_LGA` |
+| `+0x08` | `ANTENNA` | live selection: `0` HGA, `1` LGA |
+| `+0x0C` | `HGA_DEPLOY_PCT` | dish deployment, 0–100 |
+| `+0x10`/`+0x14` | `HGA_GAIN_CDB` / `LGA_GAIN_CDB` | boresight gain, centi-dBi |
+| `+0x18` | `POINT_ERR_MDEG` | boresight error, milli-degrees |
+| `+0x1C` | `RATE_BPS` | effective link rate |
+| `+0x20` | `BUDGET` | payload bytes this frame may carry |
+| `+0x24` | `TX_POWER_MW` | transmitter + steering draw |
+| `+0x28`/`+0x2C` | `DROPPED` / `FRAMES_TX` | channels squeezed out; frames transmitted |
+
+#### Rate, cadence, and budget
+
+The encoder does not consume a rate; it consumes a per-frame byte budget, and **the telemetry cadence is what converts one into the other**:
+
+```
+budget = rate_bps × tlm_period / (TICK_HZ × 8)
+```
+
+At the shipped 5 s cadence (§15) the high gain affords **100 bytes** — the whole 85-byte frame with room to spare — and the omni affords **40**, which cannot hold the 13-byte header, housekeeping and six science channels together. This makes the cadence a first-class lever: slowing the frame rate buys back bandwidth, which is a legitimate and non-obvious answer to the squeeze.
+
+The rate ratio here (2.5:1) is deliberately far gentler than the 26 dB gain difference implies; a physically honest drop is nearer 400:1, which would leave nothing to triage. The figures are chosen so the squeeze is survivable and legible.
+
+#### The squeeze
+
+When the high gain becomes unusable, `task_comms` falls back to the omni and the encoder begins **emitting channels in `tlm_priority[]` order until the budget is exhausted**, dropping the rest and reporting the count. Nothing is truncated — a partial channel would corrupt the frame — so the squeeze is felt as whole channels disappearing, which the ground sees immediately in the `COMMS` channel (`0x61`: antenna, dropped count, budget, `XSTAT`, deployment percentage). The encoder decides what fits *before* it emits, so the count describes the frame carrying it rather than the previous one.
+
+The high gain is usable only if **all three** hold: the fault verdict `g_hga_ok` is clear, the dish is at least 95% deployed, and the boresight is inside `hga_point_tol_mdeg`. The third is the interesting one — the dish is steered against the star tracker's solution, so an unpowered tracker lets the error drift at `hga_drift_mdeg_s` until the beam walks off Earth. A team that powers the tracker down to save bus power loses the downlink about six seconds later, and the cause is two subsystems away from the symptom.
+
+#### The dead end
+
+The scheduled failure (`hga_fail_after_s`) backs the dish out of full deployment and stalls it at `hga_jam_at_pct`, latching `XSTAT_HGA_JAM`. Commanding `XCTRL_DEPLOY` walks the dish back up to the jam and no further, however many times it is tried. This is intentional: the obvious operational response is the wrong one, and the lesson — Galileo's actual lesson — is that the fix was on the ground, in what the spacecraft chose to send.
+
+#### Responses available to the ground
+
+| Response | Surface | Kind |
+|---|---|---|
+| Force an antenna by hand | `XCTRL_MANUAL` + `XCTRL_SEL_LGA` | operational — no patching |
+| Retry the deployment | `XCTRL_DEPLOY` | operational — and a dead end |
+| Decide what science is worth the bandwidth | `tlm_priority[]` — the emission order, a byte array in RAM | data patch. *This is the Galileo decision.* |
+| Buy bandwidth with time | `tlm_period` — a slower cadence, a bigger budget | data patch |
+| Argue with the link budget | `lga_rate_bps` | data patch |
+| Dispute the fault verdict | `g_hga_ok`, or the branch in `task_comms` that acts on it | data or code patch |
+| Clear the jam | `XSTAT_HGA_JAM` | register patch |
+| Cancel the scheduled failure | `hga_fail_after_s` in the config block | data patch |
+| Rewrite the triage itself | `task_comms` entry pad, or the `PATCH_POINT()` before the selection (§6.5) | code patch |
+| Make room by other means | power down sensors, so their channels stop competing — but not the star tracker | operational |
+
+As built the dish is deployed, pointed and healthy, and `hga_fail_after_s` is `0` (never), so a scenario schedules the failure. Because the selection is re-evaluated every cycle, clearing the cause restores the high gain — the fallback is a *judgement the software makes*, not a latched state, which is what makes it patchable.
 
 ### 6.5 In-Flight Patching: Pads, Cave, and Trampolines
 
@@ -255,7 +309,7 @@ The application is a single-threaded cooperative loop over a **task table** in a
 
 Shipped tasks: `cmd_process` (§8), `physics_tick` (SIM tier only), `sensor_poll` (reads register block per polling config), `wdg_pet` (§10), `fault_monitor` (raises `SAFE` mode on persistent sensor faults), `camera` (§6.1), `telemetry_send` (§9), and the four auxiliary flight functions of §6.4 (`heater`, `power_mgr`, `acs`, `recorder`). The table ships with **two empty slots** at the end. The intended (never required) path for the code-injection objective: write a routine into free RAM, then `POKE` a handler pointer and flags into an empty slot. The main loop validates nothing — a bad pointer hard-faults, the watchdog fires, and the probe recovers (C2).
 
-A **config block** in app data holds every tunable: telemetry period, safe-mode thresholds, camera defaults, the target catalog, all §6.4 function parameters, and the engineering-command key. It is the primary target surface for "change mission parameters" objectives, and it lives entirely in patchable working memory.
+A **config block** in app data holds every tunable: telemetry period, safe-mode thresholds, camera defaults, the target catalog, all §6.4 function parameters, the §6.4b comms tunables (antenna link rates, deployment rate and jam point, pointing tolerance and drift rate, transmitter and steering draw, the scheduled-failure time), and the engineering-command key. It is the primary target surface for "change mission parameters" objectives, and it lives entirely in patchable working memory. Its layout is deliberately absent from the player manual.
 
 ## 8. Uplink Command Protocol (UART, line-based)
 
@@ -297,7 +351,7 @@ One frame per telemetry period (default 5 s, config block), emitted as a hex-enc
 | BUS_MV / LOAD_MW | 2+2 B | From PWR sensor; LOAD is the honest sum of sensor draw |
 | Channels | TLV × n | One `{ID u8, LEN u8, VALUE}` per sensor that is powered **and** polled; absent otherwise |
 | CAM | TLV | Channel `0x43`: capture metadata — frame id, target index, exposure, `HIST_MEAN`, `SAT_PCT`, `STARS` (present only after at least one capture) |
-| COMMS | TLV | Channel `0x61` (4 B): antenna (`0` HGA / `1` LGA), channels dropped this frame, current payload budget (§6.4b) |
+| COMMS | TLV | Channel `0x61` (6 B): antenna (`0` HGA / `1` LGA), channels dropped this frame, current payload budget (2 B), `XSTAT` low byte, HGA deployment percentage (§6.4b) |
 | HK | TLV | Channel `0x60` (8 B): auxiliary flight functions (§6.4) — `heater_on` u8, `shed_count` u8, `propellant_mg` u16, `momentum` s16, `rec_fill_pct` u8, `auth` u8. Absent in SAFE mode |
 | AUX | TLV | Channel `0x5A`: undocumented in the player manual (charter R10) — content TBD with scenario (candidate: CRC of last accepted command, closing the feedback loop for attentive players) |
 | CRC | 2 B | CRC-16/CCITT over frame after SYNC |
@@ -355,9 +409,11 @@ The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pa
 - **Scene resolution** — *closed: 96×96.* Real spacecraft photographs carry appreciably more at 96×96 (9216 bytes); a full downlink is 144 `PEEK`s, or 18 with `DUMP` enabled.
 - **Housekeeping channel visibility** — *closed.* Channel `0x60` is **documented** in the player manual: it is the only view of heater, propellant, recorder and access state, and the §6.4 flight-function scenarios are unplayable without it. `AUX` (`0x5A`) remains the deliberately undocumented channel satisfying charter R10.2.
 
+- **Telemetry cadence** — *closed: 5 s, and now load-bearing.* The comms model (§6.4b) derives the per-frame byte budget from the link rate and the cadence, so 5 s is no longer an arbitrary heartbeat: it is the constant that makes the high gain afford 100 bytes and the omni 40, which is what creates the triage. Changing it changes the difficulty of every bandwidth scenario, and `tlm_period` is itself a patch surface a player may discover. Revisit after playtest with that coupling in mind rather than as a free parameter.
+
 **Still open:**
 
-1. **Telemetry cadence** (§9). 5 s remains a guess, and now couples to recorder drain rate and image-downlink pacing. A playtest answer, not a desk answer.
+*None.* All questions raised at first issue are resolved; further changes should come from playtest evidence.
 4. **Uplink budget vs. imaging** (charter R4.2). A budget tight enough to make patching feel precious can make a 64-command image downlink impossible. These must be tuned together, or imaging needs its own allowance — the `DUMP` gate is one lever.
 5. **Is the detector store `PEEK`-readable?** Currently yes: a player who finds `0x0002_4000` can dump the source imagery at 64 bytes per command. Recommended to keep — it is expensive, and discovering an easter egg by reverse engineering is the point — but a scenario wanting the imagery strictly unreachable can exclude the range from `readable()`.
 6. **Scene resolution** (§6.4a). 64×64 was sized for a synthetic star field; real spacecraft photographs would carry noticeably more detail at 96×96 or 128×128, at 2–4× the downlink cost.

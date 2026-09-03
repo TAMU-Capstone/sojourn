@@ -226,7 +226,7 @@ had the effect you intended.
 | `0x05` | Star tracker (STR) | int32 | Attitude quaternion term ×10000 |
 | `0x43` | Camera (CAM) | 12 bytes | Capture metadata (§6.3) |
 | `0x60` | Housekeeping (HK) | 8 bytes | Spacecraft subsystem state (§5.4) |
-| `0x61` | Communications (COMMS) | 4 bytes | Downlink link state (§5.5) |
+| `0x61` | Communications (COMMS) | 6 bytes | Downlink and antenna state (§5.5) |
 
 > In SAFE mode the probe transmits the header only, with no data
 > channels, to conserve power.
@@ -252,24 +252,31 @@ occupancy at 100 % means science data is being lost.
 
 ### 5.5 Communications Channel (0x61)
 
-Four bytes describing the state of the downlink itself:
+Six bytes describing the state of the downlink itself:
 
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 1 | Antenna in use: `0` = high gain, `1` = low gain |
 | 1 | 1 | Channels dropped from this frame |
 | 2 | 2 | Payload budget, bytes |
+| 4 | 1 | Link status flags (see §6.5) |
+| 5 | 1 | High-gain dish deployment, percent |
 
-Sojourn carries two antennas. The **high gain** is narrow-beam and
-carries a complete telemetry frame. The **low gain** is a wide-beam
-backup with a far smaller budget — smaller than a full frame — so when
-the probe is using it, the flight software transmits what it considers
-most important and **drops the rest entirely**. A dropped channel is
-absent, not truncated or zeroed.
+Sojourn carries two antennas. The **high gain** is a steerable dish:
+narrow-beam, high rate, and it carries a complete telemetry frame. The
+**low gain** is a fixed wide-beam antenna — nothing to deploy and
+nothing to aim, but a fraction of the rate, and a budget smaller than a
+full frame. When the probe is using it, the flight software transmits
+what it considers most important and **drops the rest entirely**. A
+dropped channel is absent, not truncated or zeroed.
 
-> ⚠ If you see the antenna field change to `1`, the probe has decided the
-> high-gain antenna has failed and has fallen back. Science channels will
-> begin disappearing. The flight software's opinion of what is worth the
+The budget is not a fixed property of the antenna. It is the link rate
+spread across one telemetry period, so a frame sent less often carries
+more.
+
+> ⚠ If the antenna field changes to `1`, the probe has decided the high
+> gain is unusable and has fallen back. Science channels will begin
+> disappearing. The flight software's opinion of what is worth the
 > remaining bandwidth is a table in working memory, and the decision it
 > made is not necessarily the one you would make.
 
@@ -379,6 +386,83 @@ frame store directly with `PEEK`, using the address in `FRAME_ADDR` and
 the size in `FRAME_LEN` (9216 bytes), 64 bytes per command. Reassemble
 the bytes on the ground into a 96×96 image. This is slow and deliberate;
 budget your uplink accordingly.
+
+### 6.4 Antennas
+
+The probe talks to Earth through one of two antennas.
+
+**High-gain (HGA).** A deployable, steerable dish of 34.5 dBi. It is the
+primary downlink and the only one that carries a full telemetry frame.
+Being narrow-beam, it is usable only while it is **fully deployed** and
+**held on boresight**; the flight software checks both every second and
+falls back on its own if either fails. Steering the dish costs bus power
+on top of the transmitter, so the high gain is the more expensive of the
+two to operate.
+
+**Low-gain (LGA).** A fixed 8.0 dBi antenna. Nothing deploys, nothing is
+aimed, and it cannot be lost to a pointing fault — which is why it is the
+fallback. It carries a fraction of the rate.
+
+Selection is normally automatic. It can be taken over from the ground
+(§6.5) without modifying the flight program.
+
+> ⚠ Deployment is not reversible from the ground in any documented way.
+> If the dish reports less than full deployment, commanding the drive
+> again is the first thing to try and is frequently not sufficient.
+
+### 6.5 Communications Registers
+
+The comms register block reports and controls the downlink. Offsets are
+from the block's base address (Table 4-2, *not recovered*).
+
+| Offset | Register | Access | Meaning |
+|---|---|---|---|
+| `+0x00` | `XCTRL` | R/W | Control (bits below) |
+| `+0x04` | `XSTAT` | R | Status (bits below) |
+| `+0x08` | `ANTENNA` | R | In use: `0` high gain, `1` low gain |
+| `+0x0C` | `HGA_DEPLOY` | R | Dish deployment, 0–100 % |
+| `+0x10` | `HGA_GAIN` | R | Dish boresight gain, centi-dBi |
+| `+0x14` | `LGA_GAIN` | R | Low-gain antenna gain, centi-dBi |
+| `+0x18` | `POINT_ERR` | R | Dish boresight error, milli-degrees |
+| `+0x1C` | `RATE` | R | Effective link rate, bits/second |
+| `+0x20` | `BUDGET` | R | Payload bytes this frame may carry |
+| `+0x24` | `TX_POWER` | R | Transmitter draw, milliwatts |
+| `+0x28` | `DROPPED` | R | Channels dropped from the last frame |
+| `+0x2C` | `FRAMES_TX` | R | Frames transmitted since restart |
+
+**`XCTRL` bits**
+
+| Bit | Name | Effect |
+|---|---|---|
+| 0 | `TX_EN` | Transmitter enabled. Clearing this ends the downlink. |
+| 1 | `SEL_LGA` | With `MANUAL` set: `1` selects the low gain, `0` the high gain |
+| 2 | `MANUAL` | Ground owns antenna selection; the flight software stops choosing |
+| 3 | `DEPLOY` | Command a dish deployment attempt. Self-clearing on success. |
+
+**`XSTAT` bits**
+
+| Bit | Name | Meaning |
+|---|---|---|
+| 0 | `LINK` | A frame will fit and will be transmitted |
+| 1 | `HGA_DEPLOYED` | Dish at full deployment |
+| 2 | `HGA_JAM` | Deployment stalled mid-travel |
+| 3 | `POINT_ERR` | Dish boresight outside tolerance |
+| 4 | `ON_LGA` | Downlinking through the low-gain antenna |
+
+> ▓▓▓ **§6.5.1 — BORESIGHT MAINTENANCE** ▓▓▓
+> ▓▓▓ *pages missing* ▓▓▓
+> *The subsection describing how the dish's pointing solution is
+> maintained, what it depends on, and the conditions under which
+> `POINT_ERR` is raised was not recovered. Flight crews are advised that
+> the boresight error register is observable and that its behavior over
+> successive frames is informative.*
+
+> ⚠ `MANUAL` selection overrides the flight software's judgement but not
+> physics. Forcing the high gain while the dish is stowed or off
+> boresight will not close the link; `LINK` will simply read `0` and no
+> telemetry will arrive. Recovering from that state requires an uplink
+> the probe can still hear, and the uplink path is not the downlink path
+> (§2).
 
 ---
 

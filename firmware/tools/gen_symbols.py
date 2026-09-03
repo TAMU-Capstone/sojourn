@@ -22,9 +22,9 @@ KEY_SYMBOLS = [
     # imaging pipeline (imaging.c / scenes.c)
     "image_process", "imaging_init", "cam_lut", "cam_kernel",
     "scene_store", "scene_for_target", "g_cam_egg_pct", "g_dump_enable", "g_call_enable",
-    # comms / downlink bandwidth (comms.c)
+    # comms / antennas / downlink bandwidth (comms.c)
     "task_comms", "comms_budget", "tlm_priority", "g_antenna",
-    "g_hga_ok", "g_tlm_dropped",
+    "g_hga_ok", "g_tlm_dropped", "g_comms_mw",
     # boot
     "rom_services", "rom_prot", "vectors",
 ]
@@ -39,9 +39,10 @@ MEMMAP = [
     {"name": "APP_DATA",      "lo": 0x20019000, "hi": 0x2001D000, "poke": "writable"},
     {"name": "FREE_RAM",      "lo": 0x2001D000, "hi": 0x2001E000, "poke": "writable"},
     {"name": "SENSOR_BLOCK",  "lo": 0x2001E000, "hi": 0x2001E100, "poke": "writable"},
-    {"name": "CAM_REGS",      "lo": 0x2001E100, "hi": 0x2001F000, "poke": "writable"},
+    {"name": "CAM_REGS",      "lo": 0x2001E100, "hi": 0x2001E200, "poke": "writable"},
+    {"name": "COMMS_REGS",    "lo": 0x2001E200, "hi": 0x2001F000, "poke": "writable"},
     {"name": "STACKS",        "lo": 0x2001F000, "hi": 0x20020000, "poke": "writable"},
-    {"name": "CAM_FRAMEBUF",  "lo": 0x20020000, "hi": 0x20021000, "poke": "writable"},
+    {"name": "CAM_FRAMEBUF",  "lo": 0x20020000, "hi": 0x20022400, "poke": "writable"},
 ]
 
 def nm(elf: str) -> dict:

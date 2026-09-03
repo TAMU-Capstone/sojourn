@@ -135,7 +135,7 @@ units as follows:
 | `AUX` (0x5A) | u16 | CRC-16 of the last accepted uplink command, hex |
 | `CAM` (0x43) | 6 × u16 | shown as a capture event (below), not on the sensor line |
 | `HK` (0x60) | 8 bytes | auxiliary flight functions — own `HK` line: heater, propellant, momentum, recorder fill, shed count, auth |
-| `COMMS` (0x61) | 4 bytes | downlink state — own `LINK` line: antenna, payload budget, channels dropped |
+| `COMMS` (0x61) | 6 bytes | downlink and antenna state — own `LINK` line: antenna, payload budget, channels dropped, dish deployment, status flags |
 
 Event lines (`!`) are computed by comparing consecutive frames:
 
@@ -147,6 +147,39 @@ Event lines (`!`) are computed by comparing consecutive frames:
 | `CAM capture #id: target= exp= mean= sat= stars=` | `frame_id` advanced: a completed capture with its statistics — `sat`/`stars` are the exposure-objective signals (overexposure: `sat` up, `stars` down). |
 | `ANTENNA HGA -> LGA` | The probe fell back to the low-gain antenna; the payload budget collapses and channels start dropping. |
 | `DOWNLINK SATURATED: n channels dropped` | The frame no longer fits the current antenna's budget. |
+| `HIGH GAIN ANTENNA JAMMED at n% deployment` | The dish backed out of full deployment and stalled. Re-deploying will not clear it. |
+| `HGA POINTING ERROR` / `HGA boresight reacquired` | The dish lost or regained its attitude reference — powering the star tracker off costs the downlink about six seconds later. |
+| `HGA deployment n% -> m%` | The deployment drive moved. |
+| `DOWNLINK LOST (no link)` | Nothing will be transmitted: transmitter off, budget below a bare header, or the selected antenna cannot reach Earth. |
+
+### Worked example: losing and regaining the high gain
+
+A dish that stalls at 40 % deployment, the fallback to the omni, and the
+recovery once the jam flag is patched away — every line below came from
+the decoder against a live probe:
+
+    [0002] up=    15s NOMINAL reboots=0 fault=-      bus=3.301V load=1675mW
+           MAG     89 nT
+           LINK LGA | budget=40B | dropped=6 | hga_deploy=40% | LINK,HGA_JAM,ON_LGA
+         ! channel IMU LOST
+         ! channel STR LOST
+         ! ANTENNA HGA -> LGA (budget 100 -> 40 bytes)
+         ! DOWNLINK SATURATED: 6 channels dropped
+         ! HIGH GAIN ANTENNA JAMMED at 40% deployment
+
+    [0007] up=    40s NOMINAL reboots=0 fault=-      bus=3.303V load=1855mW
+           MAG    249 nT | IMU   0.14 °/s | THM  26.3 °C | PWR  3303 mV | ...
+           LINK HGA | budget=100B | dropped=0 | hga_deploy=100% | LINK,HGA_DEPLOYED
+         ! ANTENNA LGA -> HGA (budget 40 -> 100 bytes)
+         ! dropped channels 6 -> 0
+
+Three things are worth noticing. Only `MAG` survives the squeeze — the
+40-byte budget holds the 13-byte header, the 8-byte `COMMS` channel, the
+10-byte `HK` channel and exactly one 6-byte sensor, and `tlm_priority[]`
+decides which. The bus load falls from 1855 mW to 1675 mW on the omni,
+because the dish is no longer being steered. And the budget figures are
+not constants: they are the link rate spread over one 5 s telemetry
+period, so `tlm_period` is itself a way to buy bandwidth back.
 
 ### JSON mode
 
@@ -195,7 +228,7 @@ read-only alongside a scripted uplink session against `run-tcp`
     app/telemetry.c    downlink frames (TLV channels, CRC16)
     app/command.c      uplink interpreter: PING/PEEK/POKE/STAT/SAFE/NOOP (+ undocumented AUTH/TRIM)
     app/flight.c       auxiliary flight functions: heater, power-shed, attitude, recorder
-    app/comms.c        antenna state, downlink budget, channel priority
+    app/comms.c        high/low gain antennas: deployment, pointing, link budget, channel priority
     app/imaging.c      image pipeline: transfer LUT, convolution kernel, filters
     app/scenes.c       GENERATED detector image store -> ROM, not the app image
     assets/            NASA source imagery for the scenes (+ credits)

@@ -189,7 +189,8 @@ def main():
               str(sorted(f["ch"]. keys()) if f else None))
         check("AUX channel present (0x5A)", f and 0x5A in f["ch"])
         base_load = f["load_mw"] if f else 0
-        check("bus load plausible", f and 700 <= base_load <= 1100, str(base_load))
+        # Sensors, plus the transmitter and dish steering (comms.c, §6.7).
+        check("bus load plausible", f and 1700 <= base_load <= 2100, str(base_load))
 
         print("== 2. command protocol ==")
         check("PING", p.cmd("PING") == "ACK PING")
@@ -430,27 +431,115 @@ def main():
         p.cmd(f"POKE 0x{call_gate:08X} 00")
         check("CALL disabled again", p.cmd(f"CALL 0x{slot1:08X}") == "NAK E08")
 
-        print("== 6e. comms: high-gain failure forces bandwidth triage ==")
+        print("== 6e. comms: two antennas, and the bandwidth they buy ==")
+        COMMS_BASE = 0x2001E200
+        XCTRL, XSTAT = COMMS_BASE + 0x00, COMMS_BASE + 0x04
+        HGA_DEPLOY, POINT_ERR = COMMS_BASE + 0x0C, COMMS_BASE + 0x18
+        RATE_BPS, BUDGET_REG = COMMS_BASE + 0x1C, COMMS_BASE + 0x20
+        TXPWR = COMMS_BASE + 0x24
         hga_ok = int(symbols["g_hga_ok"], 16)
         prio = int(symbols["tlm_priority"], 16)
+
+        def comms(fr):
+            """COMMS channel as (antenna, dropped, budget, xstat, deploy_pct)."""
+            c = fr["ch"].get(0x61, b"") if fr else b""
+            if len(c) != 6:
+                return None
+            return (c[0], c[1], int.from_bytes(c[2:4], "big"), c[4], c[5])
+
+        def settle(pred, tries=4):
+            """Advance frames until the COMMS channel satisfies pred."""
+            got = None
+            for _ in range(tries):
+                fr = next_tlm(p)
+                got = comms(fr)
+                if got and pred(got):
+                    return fr, got
+            return fr, got
+
         f = next_tlm(p)
-        cm = f["ch"].get(0x61, b"") if f else b""
-        check("COMMS channel present", len(cm) == 4, str(len(cm)))
-        check("high gain selected as built", len(cm) == 4 and cm[0] == 0, str(cm))
-        check("nothing dropped on the high gain", len(cm) == 4 and cm[1] == 0, str(cm))
+        cm = comms(f)
+        check("COMMS channel present", cm is not None, str(f["ch"].get(0x61)))
+        check("high gain selected as built", cm and cm[0] == 0, str(cm))
+        check("nothing dropped on the high gain", cm and cm[1] == 0, str(cm))
+        check("dish reports full deployment", cm and cm[4] == 100, str(cm))
+        check("link up, dish deployed, no jam, no pointing error",
+              cm and cm[3] == 0x03, f"xstat=0x{cm[3]:02X}" if cm else str(cm))
+        hga_budget = cm[2] if cm else 0
         hga_sensors = {k for k in range(6) if k in f["ch"]}
 
+        # The budget is not a constant: it is the link rate spread over one
+        # telemetry cadence. 160 bps * 5 s / 8 = 100 bytes.
+        rate = int(p.cmd(f"PEEK 0x{RATE_BPS:08X} 4").split()[-1][:8], 16)
+        rate = int.from_bytes(rate.to_bytes(4, "big"), "little")
+        check("budget follows from the link rate and the 5 s cadence",
+              hga_budget == rate * 5 // 8, f"rate={rate}bps budget={hga_budget}B")
+
+        # The high gain costs power to steer; the omni does not.
+        hga_tx = int.from_bytes(
+            bytes.fromhex(p.cmd(f"PEEK 0x{TXPWR:08X} 4").split()[-1]), "little")
+        check("transmitter draw includes dish steering on the high gain",
+              hga_tx == 1080, f"{hga_tx} mW")
+
+        print("== 6f. the high gain needs an attitude reference ==")
+        # The dish is narrow-beam and steered against the star tracker. Cut
+        # the tracker and the boresight walks off — the same dependency the
+        # camera has, with a different and much more expensive consequence.
+        str_ctrl = 0x2001E000 + 5 * 16
+        p.cmd(f"POKE 0x{str_ctrl:08X} 00")        # power the star tracker off
+        f, cm = settle(lambda c: c[3] & 0x08)
+        check("boresight drifts off without the star tracker",
+              cm and (cm[3] & 0x08), f"xstat=0x{cm[3]:02X}" if cm else str(cm))
+        check("... which drops the link to the omni", cm and cm[0] == 1, str(cm))
+        err = int.from_bytes(
+            bytes.fromhex(p.cmd(f"PEEK 0x{POINT_ERR:08X} 4").split()[-1]), "little")
+        check("pointing error is past tolerance", err > 1500, f"{err} mdeg")
+
+        p.cmd(f"POKE 0x{str_ctrl:08X} 01")        # restore the reference
+        f, cm = settle(lambda c: not (c[3] & 0x08) and c[0] == 0, tries=8)
+        check("high gain reacquires when the tracker comes back",
+              cm and cm[0] == 0 and not (cm[3] & 0x08),
+              f"xstat=0x{cm[3]:02X} ant={cm[0]}" if cm else str(cm))
+
+        print("== 6g. manual antenna selection (no patching required) ==")
+        p.cmd(f"POKE 0x{XCTRL:08X} 07")           # TX_EN | SEL_LGA | MANUAL
+        f, cm = settle(lambda c: c[0] == 1)
+        check("ground can force the omni from the console",
+              cm and cm[0] == 1, str(cm))
+        check("... and the budget follows the selection",
+              cm and cm[2] < hga_budget, str(cm))
+        p.cmd(f"POKE 0x{XCTRL:08X} 01")           # back to autonomous
+        f, cm = settle(lambda c: c[0] == 0)
+        check("releasing manual control returns the link to the dish",
+              cm and cm[0] == 0, str(cm))
+
+        # Manual selection overrides the software's judgement but not the
+        # physics: forcing the dish while it cannot reach Earth takes the
+        # downlink away entirely. Recoverable, because the uplink path is
+        # independent — this is the intended shape of "you can go quiet
+        # but you cannot lose the probe."
+        p.cmd(f"POKE 0x{str_ctrl:08X} 00")        # boresight drifts off
+        settle(lambda c: c[3] & 0x08)
+        p.cmd(f"POKE 0x{XCTRL:08X} 05")           # TX_EN | MANUAL, force HGA
+        for _ in range(2):
+            next_tlm(p)
+        check("forcing an unusable dish silences the downlink",
+              next_tlm(p, timeout=9.0) is None, "telemetry still arriving")
+        p.cmd(f"POKE 0x{XCTRL:08X} 01")           # release: autonomy falls back
+        p.cmd(f"POKE 0x{str_ctrl:08X} 01")
+        f = next_tlm(p, timeout=12.0)
+        check("the probe still hears the uplink and comes back",
+              f is not None and comms(f) is not None, "no telemetry after recovery")
+        f, cm = settle(lambda c: c[0] == 0 and not (c[3] & 0x08), tries=8)
+        check("and returns to the high gain once it can point again",
+              cm and cm[0] == 0, str(cm))
+
+        print("== 6h. a jammed dish forces bandwidth triage ==")
         p.cmd(f"POKE 0x{hga_ok:08X} 00")          # declare the HGA failed
-        for _ in range(3):
-            f = next_tlm(p)
-            cm = f["ch"].get(0x61, b"") if f else b""
-            if len(cm) == 4 and cm[0] == 1:
-                break
-        check("probe fell back to the low gain", len(cm) == 4 and cm[0] == 1, str(cm))
-        check("bandwidth budget dropped",
-              len(cm) == 4 and int.from_bytes(cm[2:4], "big") < 96,
-              str(cm))
-        check("channels are being dropped", len(cm) == 4 and cm[1] > 0, str(cm))
+        f, cm = settle(lambda c: c[0] == 1, tries=3)
+        check("probe fell back to the low gain", cm and cm[0] == 1, str(cm))
+        check("bandwidth budget dropped", cm and cm[2] < hga_budget, str(cm))
+        check("channels are being dropped", cm and cm[1] > 0, str(cm))
         lga_sensors = {k for k in range(6) if k in f["ch"]}
         check("science channels squeezed out", len(lga_sensors) < len(hga_sensors),
               f"{sorted(hga_sensors)} -> {sorted(lga_sensors)}")
@@ -475,13 +564,34 @@ def main():
                   False, "nothing was squeezed out to promote")
 
         p.cmd(f"POKE 0x{hga_ok:08X} 01")          # clear the verdict
-        for _ in range(4):
-            f = next_tlm(p)
-            cm = f["ch"].get(0x61, b"") if f else b""
-            if len(cm) == 4 and cm[0] == 0:
-                break
+        f, cm = settle(lambda c: c[0] == 0, tries=4)
         check("high gain recovers when the verdict clears",
-              len(cm) == 4 and cm[0] == 0, str(cm))
+              cm and cm[0] == 0, str(cm))
+
+        print("== 6i. re-deploying a jammed dish is the wrong answer ==")
+        # Stall the dish mid-travel and set the jam flag, as the scenario's
+        # scheduled failure does. Commanding the drive again walks it up to
+        # the jam and no further: Galileo's fix was on the ground, not in
+        # the mechanism.
+        p.cmd(f"POKE 0x{HGA_DEPLOY:08X} 28")      # 40% deployed
+        p.cmd(f"POKE 0x{XSTAT:08X} 04")           # HGA_JAM, not deployed
+        f, cm = settle(lambda c: c[0] == 1 and c[4] < 95)
+        check("a partly deployed dish cannot carry the link",
+              cm and cm[0] == 1, str(cm))
+        check("telemetry reports the deployment percentage",
+              cm and cm[4] == 40, str(cm))
+        p.cmd(f"POKE 0x{XCTRL:08X} 09")           # TX_EN | DEPLOY
+        for _ in range(5):
+            f = next_tlm(p)
+        cm = comms(f)
+        check("re-deploying stalls at the jam and never recovers",
+              cm and cm[4] == 40 and cm[0] == 1, str(cm))
+        p.cmd(f"POKE 0x{XSTAT:08X} 00")           # clear the jam (a patch)
+        p.cmd(f"POKE 0x{XCTRL:08X} 09")
+        f, cm = settle(lambda c: c[4] == 100, tries=8)
+        check("clearing the jam lets the deployment complete",
+              cm and cm[4] == 100 and cm[0] == 0, str(cm))
+        p.cmd(f"POKE 0x{XCTRL:08X} 01")
 
         print("== 7. brick and recover (watchdog) ==")
         wdg_flags = task_table + 3 * 16 + 12      # entry 3 = wdg_pet, flags @ +12

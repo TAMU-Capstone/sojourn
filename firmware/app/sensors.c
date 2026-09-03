@@ -119,9 +119,12 @@ PATCH_ENTRY void task_physics(void)
     }
 
     /* Sum the true bus load (every powered device, camera included), plus
-     * the heater draw maintained by task_heater (flight.c). */
+     * the heater draw maintained by task_heater (flight.c) and the
+     * transmitter draw maintained by task_comms — the high gain costs
+     * more than the omni, because the dish has to be steered. */
     for (int i = 0; i < N_SENSORS; i++) load += SENSORS[i].power_mw;
     load += g_heater_mw;
+    load += g_comms_mw;
     g_load_mw = load;
 
     /* THM: tracks load (deci-degC): idle 18.0 C + 1 C per 200 mW. */

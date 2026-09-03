@@ -62,10 +62,15 @@ typedef struct {
 
     /* ---- downlink comms (spec §6.7) ---- */
     uint8_t  comms_enable;          /* 0 freezes antenna management         */
+    uint8_t  hga_deploy_rate_pct;   /* dish travel per second, percent      */
+    uint16_t hga_rate_bps;          /* link rate through the high gain      */
+    uint16_t lga_rate_bps;          /* ... and through the omni (the squeeze) */
+    uint16_t hga_point_tol_mdeg;    /* boresight tolerance, milli-degrees   */
+    uint16_t hga_drift_mdeg_s;      /* drift per second with no attitude ref */
+    uint16_t comms_tx_mw;           /* transmitter draw while keyed         */
+    uint16_t hga_point_mw;          /* extra draw to hold the dish on point */
+    uint8_t  hga_jam_at_pct;        /* where a failed deployment stalls     */
     uint8_t  _rsv6;
-    uint16_t hga_max_payload;       /* payload bytes the high gain carries  */
-    uint16_t lga_max_payload;       /* ... and the low gain (the squeeze)   */
-    uint16_t _rsv7;
     uint32_t hga_fail_after_s;      /* scripted HGA failure; 0 = never      */
 
     uint32_t eng_key;               /* engineering-command auth key         */
@@ -136,10 +141,11 @@ void task_telemetry(void);
 extern uint8_t g_dump_enable;   /* bulk downlink gate (ships 0) */
 extern uint8_t g_call_enable;   /* one-shot execution gate (ships 0) */
 
-/* ---- comms.c: antenna and downlink bandwidth ---- */
+/* ---- comms.c: antennas and downlink bandwidth ---- */
 extern uint8_t g_antenna;                    /* ANT_HGA / ANT_LGA         */
 extern uint8_t g_hga_ok;                     /* high-gain health verdict  */
 extern uint8_t g_tlm_dropped;                /* channels squeezed out     */
+extern uint16_t g_comms_mw;                  /* transmitter draw, into load */
 extern uint8_t tlm_priority[N_TLM_PRIORITY]; /* emission order (patchable)*/
 void     comms_init(void);
 uint32_t comms_budget(void);

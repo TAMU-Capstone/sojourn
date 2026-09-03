@@ -46,6 +46,13 @@ FAULTS = {0: "-", 1: "WDG", 2: "HARD", 3: "BADIMG"}
 SENSOR_CH = {0: "MAG", 1: "IMU", 2: "THM", 3: "PWR", 4: "RAD", 5: "STR"}
 CH_CAM, CH_HK, CH_COMMS, CH_AUX = 0x43, 0x60, 0x61, 0x5A
 ANTENNA = {0: 'HGA', 1: 'LGA'}
+# XSTAT bits, comms register block (spec 6.7)
+XSTAT_BITS = [(0x01, "LINK"), (0x02, "HGA_DEPLOYED"), (0x04, "HGA_JAM"),
+              (0x08, "POINT_ERR"), (0x10, "ON_LGA")]
+
+
+def xstat_flags(v: int) -> str:
+    return ",".join(n for m, n in XSTAT_BITS if v & m) or "-"
 
 
 def crc16_ccitt(data: bytes) -> int:
@@ -107,11 +114,14 @@ def decode_frame(hexstr: str):
                 "rec_fill_pct": val[6],
                 "auth": val[7],
             }
-        elif cid == CH_COMMS and clen == 4:
+        elif cid == CH_COMMS and clen == 6:
             frame["channels"]["COMMS"] = {
                 "antenna": ANTENNA.get(val[0], f"?{val[0]}"),
                 "dropped": val[1],
                 "budget": int.from_bytes(val[2:4], "big"),
+                "xstat": val[4],
+                "flags": xstat_flags(val[4]),
+                "hga_deploy_pct": val[5],
             }
         elif cid == CH_AUX and clen == 2:
             frame["channels"]["AUX"] = f"0x{int.from_bytes(val, 'big'):04X}"
@@ -170,6 +180,19 @@ class Printer:
                     ev.append(f"DOWNLINK SATURATED: {k2['dropped']} channels dropped")
                 elif k2["dropped"] != k1["dropped"]:
                     ev.append(f"dropped channels {k1['dropped']} -> {k2['dropped']}")
+                x1, x2 = k1.get("xstat", 0), k2.get("xstat", 0)
+                if (x2 & 0x04) and not (x1 & 0x04):
+                    ev.append(f"HIGH GAIN ANTENNA JAMMED at "
+                              f"{k2['hga_deploy_pct']}% deployment")
+                if (x2 & 0x08) and not (x1 & 0x08):
+                    ev.append("HGA POINTING ERROR: boresight outside tolerance")
+                elif (x1 & 0x08) and not (x2 & 0x08):
+                    ev.append("HGA boresight reacquired")
+                if k2["hga_deploy_pct"] != k1["hga_deploy_pct"]:
+                    ev.append(f"HGA deployment {k1['hga_deploy_pct']}% -> "
+                              f"{k2['hga_deploy_pct']}%")
+                if not (x2 & 0x01) and (x1 & 0x01):
+                    ev.append("DOWNLINK LOST (no link)")
             h1, h2 = p["channels"].get("HK"), f["channels"].get("HK")
             if h1 and h2:
                 if h2["shed_count"] != h1["shed_count"]:
@@ -206,7 +229,8 @@ class Printer:
         cm = f["channels"].get("COMMS")
         if cm:
             print(f"       LINK {cm['antenna']} | budget={cm['budget']}B | "
-                  f"dropped={cm['dropped']}", flush=True)
+                  f"dropped={cm['dropped']} | hga_deploy={cm['hga_deploy_pct']}% "
+                  f"| {cm['flags']}", flush=True)
         hk = f["channels"].get("HK")
         if hk:
             print(f"       HK  heater={'on' if hk['heater_on'] else 'off'} | "

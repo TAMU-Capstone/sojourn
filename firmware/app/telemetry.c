@@ -39,7 +39,7 @@ static uint32_t chan_size(uint8_t id)
         return ((SENSORS[SLOT_CAM].ctrl & SCTRL_POWER) && CAM->frame_id) ? 14u : 0u;
     case CH_HK:    return 10u;
     case CH_AUX:   return 4u;
-    case CH_COMMS: return 6u;
+    case CH_COMMS: return 8u;
     default:       return 0u;
     }
 }
@@ -79,10 +79,12 @@ static uint32_t chan_emit(uint32_t o, uint8_t id)
 
     case CH_COMMS:
         o = put8(o, CH_COMMS);
-        o = put8(o, 4);
+        o = put8(o, 6);
         o = put8(o, g_antenna);
         o = put8(o, g_tlm_dropped);
-        return put16(o, (uint16_t)comms_budget());
+        o = put16(o, (uint16_t)comms_budget());
+        o = put8(o, (uint8_t)COMMS->xstat);         /* link/deploy/point   */
+        return put8(o, (uint8_t)COMMS->hga_deploy_pct);
 
     case CH_AUX:
         o = put8(o, CH_AUX);
@@ -97,6 +99,13 @@ static uint32_t chan_emit(uint32_t o, uint8_t id)
 PATCH_ENTRY void task_telemetry(void)
 {
     uint32_t o = 3;                            /* leave room for SYNC+LEN   */
+
+    /* No link, no frame. The transmitter may be off, the budget may be too
+     * small for even a header, or the selected antenna may not be able to
+     * reach Earth (comms.c). The probe keeps flying and keeps listening —
+     * the uplink path is independent — it just stops being heard. */
+    if (!(COMMS->xstat & XSTAT_LINK))
+        return;
 
     o = put16(o, frame_cnt++);
     o = put32(o, uptime_s());
@@ -140,6 +149,8 @@ PATCH_ENTRY void task_telemetry(void)
     frame[2] = (uint8_t)paylen;
     uint16_t crc = crc16_ccitt(&frame[2], paylen + 1);
     o = put16(o, crc);
+
+    COMMS->frames_tx++;
 
     uart_puts("TLM ");
     for (uint32_t i = 0; i < o; i++) uart_put_hex8(frame[i]);

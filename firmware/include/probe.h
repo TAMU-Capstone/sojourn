@@ -22,6 +22,7 @@
 #define FREE_RAM_BASE   0x2001D000u          /* undocumented injection zone  */
 #define SENS_BASE       0x2001E000u          /* sensor register block        */
 #define CAM_BASE        0x2001E100u          /* camera extended registers    */
+#define COMMS_BASE      0x2001E200u          /* antenna/downlink registers   */
 #define STACK_TOP       0x20020000u
 #define FRAMEBUF_BASE   0x20020000u          /* 96x96x8bit camera frame      */
 #define FRAMEBUF_SIZE   0x2400u              /* 9216 bytes                   */
@@ -119,8 +120,54 @@ typedef struct {
 #define CSTAT_BUSY      (1u << 1)
 #define CSTAT_POINTERR  (1u << 2)
 
+/* ---------- Comms extended registers (spec §6.7) ----------
+ *
+ * The probe carries two antennas and can downlink through either:
+ *
+ *   HGA  a deployable high-gain dish. Narrow beam: it only closes the
+ *        link while it is fully deployed AND held on boresight, so it
+ *        depends on an attitude reference the way the camera does.
+ *   LGA  a fixed low-gain omni. No deployment, no pointing, always
+ *        available — and a small fraction of the data rate.
+ *
+ * These registers are the ground's view of that hardware. The selection
+ * is normally autonomous (task_comms), but XCTRL_MANUAL hands it to the
+ * ground without patching any code.
+ */
+typedef struct {
+    volatile uint32_t xctrl;                 /* bit0 TX_EN,1 SEL_LGA,2 MANUAL,3 DEPLOY */
+    volatile uint32_t xstat;                 /* see XSTAT_* below             */
+    volatile uint32_t antenna;               /* ANT_HGA / ANT_LGA (live)      */
+    volatile uint32_t hga_deploy_pct;        /* dish deployment, 0..100       */
+    volatile uint32_t hga_gain_cdb;          /* boresight gain, centi-dBi     */
+    volatile uint32_t lga_gain_cdb;
+    volatile uint32_t point_err_mdeg;        /* HGA boresight error, milli-°  */
+    volatile uint32_t rate_bps;              /* effective downlink bit rate   */
+    volatile uint32_t budget;                /* payload bytes per TLM frame   */
+    volatile uint32_t tx_power_mw;           /* transmitter draw, folded into load */
+    volatile uint32_t dropped;               /* channels squeezed out, last frame */
+    volatile uint32_t frames_tx;             /* frames handed to the transmitter  */
+} comms_reg_t;
+#define COMMS           ((comms_reg_t *)COMMS_BASE)
+
+#define XCTRL_TX_EN     (1u << 0)            /* transmitter enabled           */
+#define XCTRL_SEL_LGA   (1u << 1)            /* manual selection: 1 = low gain */
+#define XCTRL_MANUAL    (1u << 2)            /* ground owns the selection     */
+#define XCTRL_DEPLOY    (1u << 3)            /* command a dish deploy attempt */
+
+#define XSTAT_LINK      (1u << 0)            /* a frame will fit and go out   */
+#define XSTAT_HGA_DEPL  (1u << 1)            /* dish at full deployment       */
+#define XSTAT_HGA_JAM   (1u << 2)            /* deployment stalled mid-travel */
+#define XSTAT_POINTERR  (1u << 3)            /* boresight outside tolerance   */
+#define XSTAT_ON_LGA    (1u << 4)            /* downlinking through the omni  */
+
+#define HGA_DEPLOY_MIN  95u                  /* below this the dish is unusable */
+
 /* ---------- Telemetry (spec §9) ---------- */
 #define TLM_SYNC        0xEB90u
+/* Fixed payload header: FRAME_CNT(2) UPTIME(4) MODE(1) REBOOTS(1)
+ * LAST_FAULT(1) BUS_MV(2) LOAD_MW(2). Channels follow, budget permitting. */
+#define TLM_HEADER_BYTES 13u
 #define CH_CAM          0x43u
 #define CH_HK           0x60u
 #define CH_COMMS        0x61u
