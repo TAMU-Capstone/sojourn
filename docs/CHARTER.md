@@ -4,8 +4,8 @@
 | | |
 |---|---|
 | **Document** | Project Charter and Requirements Specification |
-| **Version** | 0.3 (Draft — uplink budget meters writes only; new R4.3 read allowance) |
-| **Date** | August 26, 2026 |
+| **Version** | 0.4 (Draft — normative content from the format, introspection and firmware specifications captured as requirements; §6.8–§6.10 added; R2.2, R3.1, R3.2, R21, R22.1 amended) |
+| **Date** | September 3, 2026 |
 | **Sponsor** | Trevor Bakker (Instructor) |
 | **Team** | 5–6 Computer Science students, one semester |
 | **Status** | Draft for team review |
@@ -113,9 +113,10 @@ The assertion language is the platform's core abstraction. It must be expressive
 | R1.1 | T | The probe SHALL reply to every uplink frame delivered to its UART with `ACK` or `NAK <code>` within 2 s of delivery (simulated transmission delay excluded). | T |
 | R1.2 | T | ACK/NAK replies SHALL encode command receipt and execution status only; no probe reply SHALL encode objective state. | I |
 | R2.1 | T | The daemon SHALL re-evaluate every active objective assertion within one telemetry period of receiving each downlink frame. | T |
-| R2.2 | T | Objective state SHALL be derived solely from introspected probe memory and decoded telemetry; the platform SHALL expose no player-accessible input that sets objective state directly. | I |
-| R3.1 | T | Every objective SHALL be in exactly one of three states at all times: pending, partial, or complete. | T |
-| R3.2 | T | Within 2 s of an objective entering a partial state, the console SHALL display that state's scenario-authored hint text. | D |
+| R2.2 | T | Objective state SHALL be derived solely from introspected probe memory, decoded downlink telemetry, and the command log; the platform SHALL expose no player-accessible input that sets objective state directly. | I |
+| R3.1 | T | Every objective SHALL be in exactly one of four states at all times: `locked`, `active`, `complete`, or `failed`. Diagnostic "partial" text is a property of an `active` objective and SHALL NOT be represented as a state. | T |
+| R3.2 | T | Within 2 s of a partial condition first holding for an `active` objective, the console SHALL display that condition's scenario-authored diagnostic text, and SHALL clear it within 2 s of no partial condition holding. | D |
+| R3.4 | T | The console SHALL reveal each authored hint once its objective has been `active` for the authored frame count, SHALL reveal hints cumulatively, and SHALL reveal no hint or brief for a `locked` objective. | D |
 | R3.3 | T | An objective that reaches complete SHALL remain complete for the rest of the scenario run, and the completion SHALL be persisted to the save volume within 5 s. | T |
 | R4.1 | T | The daemon SHALL delay each uplink by the scenario-configured one-way transmission delay, configurable from 0 to 3600 s in 1 s increments. | T |
 | R4.2 | T | The daemon SHALL meter **only state-changing uplinks** (`POKE`, `CALL`, `TRIM`, `SAFE`) against the scenario-configured command budget (1–1000 commands per window; window length 10–86 400 s), and SHALL reject each over-budget command with a distinct console error without forwarding it to the probe. | T |
@@ -175,14 +176,74 @@ The assertion language is the platform's core abstraction. It must be expressive
 |---|---|---|---|
 | R20.1 | T | The assertion evaluator and scenario loader SHALL each have automated tests achieving at least 70 % line coverage. | T |
 | R20.2 | T | An automated end-to-end test SHALL play the reference scenario to completion through the daemon API in at most 10 minutes, and SHALL run in CI on every merge to the default branch. | T |
-| R21 | T | Delivery SHALL include exactly these documents: player quickstart, scenario-author's guide, platform architecture & maintenance guide, and the reference scenario's recovered manual. | I |
+| R20.3 | T | The scenario conformance suite SHALL pass in full on every merge to the default branch, with zero failures across its validation and replay cases. | T |
+| R21 | T | Delivery SHALL include exactly these documents: (a) the player quickstart; (b) the reference scenario's recovered manual; (c) the platform architecture & maintenance guide, produced by the team; and (d) the four sponsor-furnished specifications — Firmware Design, Scenario Package Format, Introspection API, and Scenario Author's Guide — carried forward at the revision delivered. | I |
 
 ### 6.7 Future-Proofing
 
 | ID | Pri | Requirement | Verify |
 |---|---|---|---|
-| R22.1 | T | Each command-log entry SHALL contain: a monotonically increasing sequence number, a UTC timestamp, the raw uplink text, the probe's reply, and the delivery status. | T |
+| R22.1 | T | Each command-log entry SHALL contain: a monotonically increasing sequence number with no gaps; the **probe uptime in milliseconds at which the command was applied**, which is authoritative for replay; the raw uplink text verbatim; the budget resource charged, or null; and the probe's reply verbatim. A wall-clock timestamp MAY additionally be recorded for human reading and SHALL NOT be used to schedule replay. | T |
 | R22.2 | O | The command-log format SHALL be versioned and documented such that an instructor-side replay verifier can be built with no platform changes, confirmed by analysis at the design review. | A |
+
+### 6.8 Scenario Package & Content Seam
+
+Requirements in this section make the *Scenario Package Format* specification binding. That document defines the schemas and vocabulary; these are the verifiable obligations it places on the platform.
+
+| ID | Pri | Requirement | Verify |
+|---|---|---|---|
+| R23.1 | T | The daemon SHALL load only packages conforming to the Scenario Package Format at the format revision it implements, and SHALL refuse any package declaring a higher `format` value, reporting the package path and the unsupported value. | T |
+| R23.2 | T | The daemon SHALL ignore unrecognized keys at every level of a package rather than refusing it, so that a package authored against a later revision of the format loads without platform change. | T |
+| R23.3 | T | Within 10 s of session start the daemon SHALL compare the application-image CRC32 reported by the probe at boot against the package's declared `app_crc32`, and on mismatch SHALL refuse to start the scenario and report both values. | T |
+| R23.4 | T | Scenario assertions SHALL address probe memory by symbol name resolved through the package's symbol map, or by absolute address only for peripheral register blocks; every resolved address and range SHALL fall inside a region declared in the package's memory map. | T |
+| R23.5 | T | A package containing executable predicate code SHALL declare itself impure; the daemon SHALL provide a mode that refuses impure packages, and that mode SHALL be the default for any packaged distribution. | T |
+| R23.6 | T | Every scenario package delivered with the platform SHALL be pure content, containing no executable predicate code. | I |
+| R23.7 | T | The daemon SHALL expose a non-interactive entry point that accepts a scenario directory and a command log, replays the log, and emits final objective states as JSON, per the format specification's conformance interface. | T |
+| R23.8 | T | Package setup writes SHALL be applied before the first evaluated frame, SHALL NOT be charged to any command budget, and SHALL NOT appear in the command log. | T |
+| R23.9 | T | Objectives SHALL be evaluated in the order declared by the package, and within each objective in the order: failure condition, partial conditions, success condition. | T |
+| R23.10 | T | A predicate over absent telemetry — an absent channel, an undefined field path, or a frame failing CRC — SHALL evaluate false and SHALL NOT abort the evaluation pass. | T |
+
+### 6.9 Evaluation Integrity & Introspection
+
+Requirements in this section make the *Introspection API* specification binding. They exist because the alternative design — evaluating objectives over the player's uplink — is plausible, simpler, and wrong in three ways that produce no visible symptom.
+
+| ID | Pri | Requirement | Verify |
+|---|---|---|---|
+| R24.1 | T | The platform SHALL maintain exactly two connections to the probe: a command channel carrying only player-originated uplinks, and a read-only introspection channel used only for objective evaluation. | I |
+| R24.2 | T | The daemon SHALL originate no uplink command of its own. Every command delivered to the probe SHALL correspond to exactly one player action recorded in the command log. | T |
+| R24.3 | T | The daemon SHALL NOT write probe memory or registers, and SHALL NOT set breakpoints or single-step, over the introspection channel. | I |
+| R24.4 | T | Introspection activity SHALL NOT be charged to any command budget, SHALL NOT be appended to the command log, and SHALL NOT alter any value observable in downlink telemetry. | T |
+| R24.5 | T | All memory reads within one evaluation pass SHALL observe probe state at a single instant; the guest SHALL be halted for the duration of the pass, and the halt SHALL NOT exceed 250 ms. | T |
+| R24.6 | T | A failed introspection read SHALL abort the evaluation pass and leave every objective state unchanged; it SHALL NOT be evaluated as a false predicate. | T |
+| R24.7 | T | On loss of the introspection channel the daemon SHALL attempt reconnection before the next evaluation pass, and SHALL report degraded grading to the console within one telemetry period if reconnection fails. | D |
+| R24.8 | T | The daemon SHALL contain no emulator-specific introspection code; substituting the harness-tier emulator SHALL require configuration change only, verified by an empty diff across daemon source. | I |
+| R24.9 | T | The introspection port SHALL be bound to the loopback interface only, and SHALL NOT be documented in any player-facing material. | I |
+| R24.10 | T | Objective evaluation SHALL be a pure function of setup state, the command log, and probe behavior. No objective state SHALL depend on wall-clock time, host performance, or a random source. Verified by replaying one command log of at least 20 commands twice and obtaining identical objective states and identical first-completion frame numbers. | T |
+
+### 6.10 Traceability
+
+Four specifications carry normative content. Each is binding through the requirements named here; where a specification and this charter disagree, **this charter governs and the specification is amended**.
+
+| Specification | Standing | Made binding by |
+|---|---|---|
+| Firmware Design Specification | Normative — the probe | R1.1, R1.2, R5.1–R5.3, R8.1, R8.2, R10.1, R10.2 |
+| Scenario Package Format | Normative — the content seam | R11.1–R11.3, R13, R22.1, R23.1–R23.10 |
+| Introspection API | Normative — evaluation transport | R2.2, R24.1–R24.10 |
+| Scenario Author's Guide | Normative — authoring practice | R9.1, R9.2, R12 |
+| Platform Design | **Advisory only** — carries no requirements | — |
+
+Automated verification is concentrated in three suites, and a requirement marked **T** is expected to be covered by one of them:
+
+| Suite | Covers |
+|---|---|
+| Firmware end-to-end (`firmware/tools/e2e_test.py`, 99 checks) | R1.1, R1.2, R5.1–R5.3, R10.2 |
+| Scenario conformance (`conformance/run_conformance.py`, 18 checks) | R13, R23.1, R23.4, R23.7, R23.8, R24.4, R24.10 |
+| Daemon unit and integration tests (team-authored) | R2.1, R3.1–R3.4, R4.1, R4.2, R4.3, R11.1, R14.1, R15.1, R15.2, R20.1, R23.2, R23.3, R23.5, R23.9, R23.10, R24.5–R24.7 |
+
+Requirements verified by inspection, analysis or demonstration are settled at the design review (§10) rather than in CI, and are listed in the acceptance script.
+
+> **Requirements that changed at v0.4, and why.** R2.2 omitted the command log, which the assertion vocabulary reads through its `commanded` and `budget` predicates. R3.1 named three objective states where the format defines four, and treated "partial" as a state when it is diagnostic text attached to an active objective. R3.2 conflated that diagnostic text with the timed hint ladder, which are separately authored and separately revealed; R3.4 now covers hints. R21 listed four deliverable documents before four specifications existed. R22.1 required a UTC timestamp in each command-log entry — but replay schedules commands by **probe uptime**, and a wall-clock stamp used for that purpose reproduces a different session on a faster machine, which is precisely the defect the requirement was meant to prevent.
+
 
 ## 7. Team Organization
 

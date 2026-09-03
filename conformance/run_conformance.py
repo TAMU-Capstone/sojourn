@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """run_conformance.py — the acceptance gate for a Sojourn game daemon.
 
-Two suites:
+Three suites:
 
   VALIDATION   Every package in conformance/defects/ must be rejected by the
                team's validator, each by the rule it was seeded for, and the
@@ -15,6 +15,13 @@ Two suites:
                output generated from real firmware runs. This is the whole
                acceptance gate for the scenario format: nothing else about
                the daemon is dictated.
+
+  DETERMINISM  One log replayed twice must reach identical objective states
+               and identical completion frames. This is charter R24.10, and
+               it catches the entire class of replay bugs -- scheduling by
+               wall clock, or evaluation that consults a clock or a random
+               source -- which are otherwise invisible until someone runs
+               the platform on different hardware.
 
 Usage:
     run_conformance.py --daemon "python3 ../mydaemon/main.py"
@@ -142,6 +149,40 @@ def run_replay(daemon, quiet):
     return passed, failed
 
 
+def run_determinism(daemon, quiet):
+    """R24.10: the same log replayed twice must reach the same verdicts.
+
+    This is the whole class of replay bugs in one check. A daemon that
+    schedules by wall clock, or whose evaluation consults a clock or a
+    random source, diverges here and nowhere else.
+    """
+    print("== determinism suite (R24.10) ==")
+    scen, fixture = "grader-hygiene", "grader-hygiene"
+    pkg = HERE / scen if (HERE / scen / "manifest.json").exists() else SCENARIOS / scen
+    log = HERE / f"{fixture}.jsonl"
+    runs = []
+    for i in (1, 2):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "state.json"
+            cmd = daemon + ["conform", "--scenario", str(pkg),
+                            "--replay", str(log), "--out", str(out)]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+            if r.returncode != 0 or not out.exists():
+                print(f"  [FAIL] replay {i} of 2 exited {r.returncode}")
+                return 0, 1
+            runs.append(json.load(open(out)))
+    a, b = ({o["id"]: (o["state"], o["first_frame"]) for o in x["objectives"]}
+            for x in runs)
+    if a != b:
+        print("  [FAIL] the same log replayed twice reached different verdicts")
+        for k in sorted(set(a) | set(b)):
+            if a.get(k) != b.get(k):
+                print(f"        {k}: run 1 {a.get(k)}  run 2 {b.get(k)}")
+        return 0, 1
+    print(f"  [PASS] identical states and completion frames across two replays")
+    return 1, 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -164,8 +205,9 @@ def main():
 
     p1, f1 = run_validation(validator, a.quiet)
     p2, f2 = run_replay(daemon, a.quiet)
+    p3, f3 = run_determinism(daemon, a.quiet)
 
-    total_p, total_f = p1 + p2, f1 + f2
+    total_p, total_f = p1 + p2 + p3, f1 + f2 + f3
     print()
     print(f"{total_p} passed, {total_f} failed")
     return 1 if total_f else 0
