@@ -24,7 +24,8 @@ SECTIONS
         _app_image_end = .;
     } > ROM
 
-    /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) *(.data*) *(.bss*) }
+    /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) *(.data*) *(.bss*)
+                  *(__patchable_function_entries) }
 }
 
 /* The bootloader must be stateless outside its fixed-address blocks. */

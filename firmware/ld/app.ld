@@ -18,7 +18,8 @@ SECTIONS
     .data   : { *(.data*) } > DATA
     .bss    : { *(.bss*) *(COMMON) } > DATA
 
-    /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) }
+    /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment)
+                  *(__patchable_function_entries) }
 }
 
 ASSERT(SIZEOF(.data) == 0,

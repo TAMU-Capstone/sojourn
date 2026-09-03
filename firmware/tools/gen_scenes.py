@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""gen_scenes.py — generate the camera's stored target scenes.
+
+Emits app/scenes.c: SCENE_COUNT raw 64x64 8-bit grayscale images, one per
+survey target in the config catalog. These are the *source* pixels the
+imaging pipeline reads; the camera writes its processed output into the
+frame buffer, which is what gets downlinked.
+
+Deterministic (fixed LCG), so every build produces byte-identical scenes
+and scenario assertions stay stable.
+"""
+import math
+import pathlib
+
+W = H = 64
+N = W * H
+
+
+class R:
+    """Small deterministic LCG — reproducible across Python versions."""
+    def __init__(self, seed):
+        self.s = seed & 0xFFFFFFFF
+
+    def next(self):
+        self.s = (1103515245 * self.s + 12345) & 0x7FFFFFFF
+        return self.s
+
+    def rng(self, lo, hi):
+        return lo + self.next() % (hi - lo + 1)
+
+
+def blank(bg=10):
+    return [bg] * N
+
+
+def add(img, x, y, v):
+    if 0 <= x < W and 0 <= y < H:
+        p = img[y * W + x] + v
+        img[y * W + x] = 255 if p > 255 else p
+
+
+def star(img, cx, cy, peak, spread=1.0):
+    """A small point-spread function: bright core, quick falloff."""
+    r = int(spread * 2) + 1
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            d2 = dx * dx + dy * dy
+            v = int(peak * math.exp(-d2 / (2.0 * spread * spread)))
+            if v:
+                add(img, cx + dx, cy + dy, v)
+
+
+def spikes(img, cx, cy, length, peak):
+    for i in range(1, length):
+        v = int(peak * (1.0 - i / length) * 0.5)
+        add(img, cx + i, cy, v)
+        add(img, cx - i, cy, v)
+        add(img, cx, cy + i, v)
+        add(img, cx, cy - i, v)
+
+
+def gradient(img, top=6, bottom=16):
+    for y in range(H):
+        v = top + (bottom - top) * y // H
+        for x in range(W):
+            img[y * W + x] = v
+
+
+# ---- scene 0: survey field K-25 — a plain star field -----------------
+def scene_survey():
+    r = R(0x5A17)
+    img = blank(9)
+    gradient(img, 7, 14)
+    for _ in range(38):
+        x, y = r.rng(1, W - 2), r.rng(1, H - 2)
+        star(img, x, y, r.rng(150, 245), 0.85)
+    for _ in range(60):                       # faint background sources
+        star(img, r.rng(0, W - 1), r.rng(0, H - 1), r.rng(40, 90), 0.6)
+    return img
+
+
+# ---- scene 1: calibration star HR-2941 — one dominant source ---------
+def scene_calibration():
+    r = R(0x2941)
+    img = blank(8)
+    gradient(img, 6, 12)
+    for _ in range(12):
+        star(img, r.rng(2, W - 3), r.rng(2, H - 3), r.rng(90, 160), 0.7)
+    star(img, 32, 31, 250, 2.2)
+    spikes(img, 32, 31, 14, 210)
+    return img
+
+
+# ---- scene 2: comet 41P — nucleus, coma, tail ------------------------
+def scene_comet():
+    r = R(0x41C0)
+    img = blank(8)
+    gradient(img, 6, 12)
+    for _ in range(20):
+        star(img, r.rng(0, W - 1), r.rng(0, H - 1), r.rng(80, 150), 0.65)
+    nx, ny = 24, 40
+    for y in range(H):                        # coma
+        for x in range(W):
+            d = math.hypot(x - nx, y - ny)
+            if d < 13:
+                add(img, x, y, int(120 * math.exp(-d / 4.5)))
+    for t in range(0, 46):                    # tail toward upper-right
+        tx = nx + int(t * 0.80)
+        ty = ny - int(t * 0.52)
+        wdt = 1 + t // 12
+        for o in range(-wdt, wdt + 1):
+            add(img, tx, ty + o, int(95 * math.exp(-t / 22.0)))
+    star(img, nx, ny, 245, 1.5)               # nucleus
+    return img
+
+
+# ---- scene 3: outer-belt object — a cratered, crescent-lit disk ------
+def scene_disk():
+    r = R(0x7C56)
+    img = blank(7)
+    cx, cy, rad = 32, 32, 21
+    craters = [(r.rng(-14, 14), r.rng(-14, 14), r.rng(3, 6)) for _ in range(9)]
+    for y in range(H):
+        for x in range(W):
+            dx, dy = x - cx, y - cy
+            d = math.hypot(dx, dy)
+            if d > rad:
+                continue
+            # limb darkening + terminator: lit from the left
+            lam = (1.0 - (dx + rad) / (2.0 * rad))       # 1 at left, 0 at right
+            shade = max(0.0, lam) ** 0.75
+            edge = math.sqrt(max(0.0, 1.0 - (d / rad) ** 2))
+            v = int(30 + 215 * shade * (0.55 + 0.45 * edge))
+            for (ox, oy, orad) in craters:                # craters
+                if math.hypot(dx - ox, dy - oy) < orad:
+                    v = int(v * 0.62)
+                if abs(math.hypot(dx - ox, dy - oy) - orad) < 1.0:
+                    v = min(255, int(v * 1.25))           # bright rim
+            img[y * W + x] = max(0, min(255, v))
+    for _ in range(14):
+        x, y = r.rng(0, W - 1), r.rng(0, H - 1)
+        if math.hypot(x - cx, y - cy) > rad + 2:
+            star(img, x, y, r.rng(110, 190), 0.7)
+    return img
+
+
+SCENES = [
+    ("survey field K-25", scene_survey),
+    ("calibration star HR-2941", scene_calibration),
+    ("comet 41P recovery field", scene_comet),
+    ("outer-belt object 2007-XV56", scene_disk),
+]
+
+
+def main():
+    out = pathlib.Path(__file__).resolve().parent.parent / "app" / "scenes.c"
+    lines = [
+        "/* scenes.c — GENERATED by tools/gen_scenes.py. Do not edit by hand.",
+        " *",
+        " * Stored camera target scenes: raw 64x64 8-bit grayscale source",
+        " * pixels, one per survey target. The imaging pipeline (imaging.c)",
+        " * reads these and the camera writes its processed output into the",
+        " * frame buffer, which is what the ground station downlinks.",
+        " */",
+        '#include "app.h"',
+        "",
+    ]
+    for idx, (name, fn) in enumerate(SCENES):
+        img = fn()
+        assert len(img) == N and all(0 <= v <= 255 for v in img), name
+        lines.append(f"/* scene {idx}: {name} */")
+        lines.append(f"static const uint8_t scene{idx}[SCENE_PIXELS] = {{")
+        for r0 in range(0, N, 16):
+            row = ",".join(f"0x{v:02X}" for v in img[r0:r0 + 16])
+            lines.append(f"    {row},")
+        lines.append("};")
+        lines.append("")
+    lines.append("const uint8_t *const scene_data[SCENE_COUNT] = {")
+    lines.append("    " + ", ".join(f"scene{i}" for i in range(len(SCENES))) + ",")
+    lines.append("};")
+    lines.append("")
+    out.write_text("\n".join(lines))
+    print(f"{out}: {len(SCENES)} scenes, {N} bytes each")
+
+
+if __name__ == "__main__":
+    main()

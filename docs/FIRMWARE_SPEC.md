@@ -4,7 +4,7 @@
 |---|---|
 | **Document** | Golden-Image Flight Firmware, Engineering Design Specification |
 | **Project** | "Sojourn" Reverse Engineering Game Platform |
-| **Version** | 0.4 (Draft for sponsor review — adds in-flight patching support, §6.5) |
+| **Version** | 0.5 (Draft for sponsor review — adds stored scenes & imaging pipeline, §6.4a) |
 | **Date** | August 26, 2026 |
 | **Authors** | Trevor Bakker (sponsor) with Claude |
 | **Audience** | Instructor and capstone team. **This document is not player-facing** — the player-facing *Recovered Mission Operations Manual* is derived from it with deliberate omissions (§14). |
@@ -137,6 +137,28 @@ Beyond the science payload, the firmware carries a set of **plausible housekeepi
 | **Data recorder** | `task_recorder` | Fills with science data per active sensor, drains at `rec_downlink_rate`; caps at `rec_buffer_max` | Buffer overflow / data loss when downlink is disabled or generation is spiked |
 
 The config block (§7) holds every tunable — setpoints, budgets, rates, momentum limits, propellant load, and the engineering-command key (§8). All of it lives in patchable working memory. Defaults: heater setpoint 10.0 °C (off in nominal warmth), power budget 5000 mW (no shedding), ACS on with 8000 mg propellant, recorder draining faster than it fills.
+
+### 6.4a Stored Scenes and the Imaging Pipeline
+
+The camera does not synthesize pixels. Each catalog target carries a **scene index** selecting one of `SCENE_COUNT` stored 64×64 8-bit grayscale images (`scenes.c`, generated deterministically by `tools/gen_scenes.py`): a survey star field, a calibration star with diffraction spikes, a comet with coma and tail, and a cratered outer-belt body. The camera reads that scene, runs it through the pipeline below, and **writes the result into the frame buffer** — which is what the ground downlinks.
+
+> **Why raw pixels rather than a stored JPEG/PNG.** A compressed image cannot be meaningfully inverted or filtered by poking bytes, and an on-board decoder would be a large block of un-patchable code. Real missions downlink raw sensor data and form image products on the ground, so the probe holds raw pixels and the *ground station* writes the PNG (`tools/img_recover.py`). That keeps every stage of the pipeline a legitimate patch target.
+
+Pipeline, source → frame buffer, in order:
+
+| Stage | Surface | Ships as | Patch difficulty |
+|---|---|---|---|
+| Convolution | `cam_kernel[9]` + `cam_kdiv` | identity kernel | data — blur, sharpen, edge-detect are coefficient changes |
+| Exposure / gain | `EXPOSURE_MS`, `GAIN` registers | 250 ms, ×16 | data — already the over/under-exposure objective (§6.1) |
+| Transfer curve | `cam_lut[256]` | identity ramp | **data — the inversion objective: 8 uplinks rewrite the curve** |
+| Stage selection | `cam_filter` (config) | `FILT_LUT` | data — enable/disable stages |
+| The loop itself | `image_process()` | — | code — has an entry pad and an inline patch point (§6.5) |
+
+The LUT stage is **live but invisible as built**: it ships as an identity ramp, so the pipeline already runs it and a scenario needs only to rewrite 256 bytes to invert, threshold, posterize or solarize the downlinked image. Because the LUT is applied last and the statistics are computed from the frame buffer, an inversion is verifiable **from telemetry alone** — the dark sky becomes bright, so `HIST_MEAN` jumps — without downlinking a single pixel.
+
+Capture statistics are computed from the written frame, not the source. `STARS` counts bright *unclipped local maxima*, so it measures genuine point sources: an overexposed frame is a flat bright field and scores near zero, while a merely bright frame does not inflate the count.
+
+**Recovering the picture.** Pixels never ride in telemetry. `tools/img_recover.py` drives the documented downlink — `PEEK` the frame buffer 64 bytes at a time, 64 commands for a full frame — and writes a PNG with a dependency-free encoder (`tools/png.py`, stdlib only). Every action it takes is an ordinary uplink a player could type by hand, including `--invert`, `--threshold`, `--filter blur|sharpen|edge` and `--target N`.
 
 ### 6.5 In-Flight Patching: Pads, Cave, and Trampolines
 
@@ -271,12 +293,12 @@ How the charter's four-step ramp (R9) maps onto this design — each objective h
 | 2. Change mission parameter | Telemetry period / comms tunable in the config block |
 | 3. Patch code | `fault_monitor` comparison or branch (stop spurious safe-mode trips); NOP a call site |
 | 4. Inject functionality | Routine into the code cave (`0x2001_D000`) + hook an empty task-table slot, detour a function's 8-byte entry pad, or take an inline patch point (§6.5) |
-| Camera missions (reference-scenario extras or scenario #2) | Retarget: `TARGET` register or a catalog entry. Fix exposure: `EXPOSURE_MS`/`GAIN`, verified by `SAT_PCT` falling and `STARS` rising in channel `0x43`. Image downlink: `PEEK`-dump the frame buffer under the uplink budget |
+| Camera missions (reference-scenario extras or scenario #2) | Retarget: `TARGET` register or a catalog entry's `scene` — the returned picture changes. Fix exposure: `EXPOSURE_MS`/`GAIN`, verified by `SAT_PCT` falling and `STARS` rising in channel `0x43`. **Image processing: rewrite `cam_lut` to invert/threshold/posterize, or `cam_kernel` to blur/sharpen/edge-detect — verified in telemetry by `HIST_MEAN`, or visually by recovering the frame.** Image downlink: `PEEK`-dump the frame buffer under the uplink budget |
 | Auxiliary-function missions (§6.4, future scenarios) | Thermal: heater setpoint/enable, verified by `heater_on` + `LOAD_MW`. Power: `power_budget_mw`/`shed_enable`/shed-priority table, verified by `shed_count` and a vanishing sensor channel. Attitude: `acs_*` params/enable + `TRIM`, verified by `momentum`/`propellant_mg`. Recorder: `rec_*` params, verified by `rec_fill_pct`. Security: recover `eng_key`, `AUTH`-unlock, or re-key it — verified by the `auth` flag |
 
 ## 14. Documentation Split (spec → player manual)
 
-The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pages lost"): players **get** the documented command protocol verbs (§8, `PING`/`PEEK`/`POKE`/`STAT`/`SAFE`/`NOOP` — not `AUTH`/`TRIM`), the telemetry format minus AUX and HK (§9), the coarse memory map (ROM / APP / data regions and the protection rules — not the internal layout), the sensor list with slot IDs, boot/watchdog behavior described operationally, and the camera's basic operating registers (`CCTRL`, `EXPOSURE_MS`, `GAIN`, the stats registers) — presented as a surviving excerpt of the imaging handbook. Players **do not get**: task-table location or format, config-block layout (including the **target catalog** and all §6.4 function parameters, and the **engineering key** — finding these *is* the mission), free-RAM region, frame-buffer address (discoverable via `FRAME_ADDR`), the physics/synthesis module, the `AUTH`/`TRIM` verbs, the AUX and HK channels, or any symbol file. Everything withheld is discoverable in the binary — that's the game. (The manual's Appendix C hints that undocumented channels exist; `0x60` and `0x5A` are exactly those.)
+The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pages lost"): players **get** the documented command protocol verbs (§8, `PING`/`PEEK`/`POKE`/`STAT`/`SAFE`/`NOOP` — not `AUTH`/`TRIM`), the telemetry format minus AUX and HK (§9), the coarse memory map (ROM / APP / data regions and the protection rules — not the internal layout), the sensor list with slot IDs, boot/watchdog behavior described operationally, and the camera's basic operating registers (`CCTRL`, `EXPOSURE_MS`, `GAIN`, the stats registers) — presented as a surviving excerpt of the imaging handbook. Players **do not get**: task-table location or format, config-block layout (including the **target catalog** and all §6.4 function parameters, and the **engineering key** — finding these *is* the mission), free-RAM region, frame-buffer address (discoverable via `FRAME_ADDR`), the physics module, the imaging pipeline internals (`cam_lut`, `cam_kernel`, `cam_filter`, the stored scenes), the `AUTH`/`TRIM` verbs, the AUX and HK channels, or any symbol file. Everything withheld is discoverable in the binary — that's the game. (The manual's Appendix C hints that undocumented channels exist; `0x60` and `0x5A` are exactly those.)
 
 ## 15. Open Questions for Sponsor Review
 

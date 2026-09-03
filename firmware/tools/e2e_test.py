@@ -254,6 +254,55 @@ def main():
         check("overexposure raises SAT_PCT", sat2 > sat1, f"{sat1} -> {sat2}")
         check("overexposure washes out stars", stars2 < stars1, f"{stars1} -> {stars2}")
 
+        print("== 6a. imaging pipeline (stored scenes, LUT, retarget) ==")
+        lut = int(symbols["cam_lut"], 16)
+        fb = 0x20020000
+        # restore a sane exposure after the overexposure check above
+        p.cmd(f"POKE 0x{CAM_BASE + 0x0C:08X} FA000000")      # 250 ms
+        p.cmd(f"POKE 0x{CAM_BASE:08X} 03")
+        time.sleep(2.5)
+        base_px = bytes.fromhex(p.cmd(f"PEEK 0x{fb:08X} 32").split()[-1])
+        check("frame buffer holds scene pixels", any(b > 0 for b in base_px),
+              base_px.hex())
+        f = next_tlm(p)
+        cam = f["ch"].get(0x43, b"") if f else b""
+        mean_before = int.from_bytes(cam[6:8], "big") if len(cam) >= 12 else -1
+        check("nominal frame is mostly dark sky", 0 <= mean_before < 90,
+              str(mean_before))
+
+        # Invert purely as a data patch: rewrite the 256-byte transfer curve.
+        inv = bytes(255 - i for i in range(256))
+        for off in range(0, 256, 32):
+            r = p.cmd(f"POKE 0x{lut + off:08X} {inv[off:off+32].hex().upper()}")
+            if r != "ACK POKE 32":
+                break
+        check("inverting LUT installed (8 uplinks)", r == "ACK POKE 32", r)
+        p.cmd(f"POKE 0x{CAM_BASE:08X} 03")
+        time.sleep(2.5)
+        inv_px = bytes.fromhex(p.cmd(f"PEEK 0x{fb:08X} 32").split()[-1])
+        check("downlinked pixels are inverted",
+              all(a + b == 255 for a, b in zip(base_px, inv_px)),
+              f"{base_px[:6].hex()} vs {inv_px[:6].hex()}")
+        f = next_tlm(p)
+        cam = f["ch"].get(0x43, b"") if f else b""
+        mean_after = int.from_bytes(cam[6:8], "big") if len(cam) >= 12 else -1
+        check("inversion is visible in telemetry alone", mean_after > 150,
+              f"mean {mean_before} -> {mean_after}")
+
+        # Retarget: a different catalog entry returns a different scene.
+        for off in range(0, 256, 32):                        # restore identity
+            p.cmd(f"POKE 0x{lut + off:08X} {bytes(range(off, off+32)).hex().upper()}")
+        p.cmd(f"POKE 0x{CAM_BASE + 0x08:08X} 03000000")      # target 3
+        p.cmd(f"POKE 0x{CAM_BASE:08X} 03")
+        time.sleep(2.5)
+        t3_px = bytes.fromhex(p.cmd(f"PEEK 0x{fb + 2048:08X} 32").split()[-1])
+        p.cmd(f"POKE 0x{CAM_BASE + 0x08:08X} 00000000")      # back to target 0
+        p.cmd(f"POKE 0x{CAM_BASE:08X} 03")
+        time.sleep(2.5)
+        t0_px = bytes.fromhex(p.cmd(f"PEEK 0x{fb + 2048:08X} 32").split()[-1])
+        check("retargeting returns a different scene", t3_px != t0_px,
+              f"{t3_px[:6].hex()} vs {t0_px[:6].hex()}")
+
         print("== 6b. auxiliary flight functions ==")
         f = next_tlm(p)
         hk = f["ch"].get(0x60, b"") if f else b""

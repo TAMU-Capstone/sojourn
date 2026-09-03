@@ -42,7 +42,7 @@ typically already present).
     make gdb        # attach the cross-gdb it finds (arm-none-eabi-gdb or gdb-multiarch)
     make tlm        # boot the probe and stream DECODED telemetry (see below)
     make run-tcp    # boot with the UART on tcp:5599 (one client at a time)
-    make test       # 36-check end-to-end suite
+    make test       # 60-check end-to-end suite
 
 Overridable: `make CROSS=... QEMU_BIN=... PYTHON=...` if your tools have
 nonstandard names or live off PATH.
@@ -179,8 +179,9 @@ read-only alongside a scripted uplink session against `run-tcp`
 
 ## Verify
 
-    make test    # 36 checks: framing, protocol, protection,
-                 # objective-1 flow, camera, brick+recover
+    make test    # 60 checks: framing, protocol, protection, objective-1
+                 # flow, camera + imaging pipeline, flight functions,
+                 # trampoline patching, brick + watchdog recovery
 
 ## Layout
 
@@ -191,10 +192,48 @@ read-only alongside a scripted uplink session against `run-tcp`
     app/telemetry.c    downlink frames (TLV channels, CRC16)
     app/command.c      uplink interpreter: PING/PEEK/POKE/STAT/SAFE/NOOP (+ undocumented AUTH/TRIM)
     app/flight.c       auxiliary flight functions: heater, power-shed, attitude, recorder
+    app/imaging.c      image pipeline: transfer LUT, convolution kernel, filters
+    app/scenes.c       GENERATED stored target images (tools/gen_scenes.py)
     app/config.c       mission config block + target catalog + function tunables
     ld/                boot.ld (ROM), app.ld (execute-in-place at 0x20001000)
-    tools/             image fixup, symbols.json generator, e2e test
+    tools/             image fixup, symbols generator, telemetry decoder,
+                       image recovery (PNG), scene generator, e2e test
     include/probe.h    the memory-map contract (matches memmap.json)
+
+## Camera images and the processing pipeline
+
+Each catalog target selects one of four stored 64×64 grayscale scenes
+(star field, calibration star, comet, cratered body). The camera reads
+the scene, runs it through a pipeline, and writes the result into the
+frame buffer — which is what the ground downlinks. Pixels never ride in
+telemetry, only capture statistics.
+
+Every pipeline stage is a patch surface, easiest first:
+
+| Stage | Surface | Ships as |
+|---|---|---|
+| Convolution | `cam_kernel[9]`, `cam_kdiv` | identity |
+| Exposure/gain | `EXPOSURE_MS`, `GAIN` | 250 ms, ×16 |
+| Transfer curve | `cam_lut[256]` | identity ramp |
+| Stage select | `cam_filter` (config) | `FILT_LUT` |
+| The loop | `image_process()` | entry pad + patch point |
+
+The LUT stage is live but invisible as built, so **inverting the
+downlinked image is a pure data patch** — 8 uplinks rewriting 256 bytes.
+It is verifiable from telemetry alone (dark sky becomes bright, so
+`HIST_MEAN` jumps) as well as visually.
+
+Recover an actual picture — this drives the real downlink, 64 bytes per
+`PEEK`, and writes a PNG with a stdlib-only encoder (no PIL):
+
+    python3 tools/img_recover.py -o frame.png          # as built
+    python3 tools/img_recover.py --invert              # inverting LUT
+    python3 tools/img_recover.py --threshold 96
+    python3 tools/img_recover.py --filter blur|sharpen|edge
+    python3 tools/img_recover.py --target 3            # different scene
+
+Everything the tool does is an ordinary uplink a player could type by
+hand. Regenerate the scenes with `python3 tools/gen_scenes.py`.
 
 ## Patching space (trampolines)
 

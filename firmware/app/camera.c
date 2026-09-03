@@ -27,15 +27,17 @@ void camera_init(void)
     CAM->frame_addr  = FRAMEBUF_BASE;
     CAM->frame_len   = FRAMEBUF_SIZE;
     CAM->cstat       = CSTAT_READY;
+    imaging_init();
     xmemset((void *)FB, 0, FRAMEBUF_SIZE);
 }
 
-static void plot(uint32_t x, uint32_t y, uint32_t v)
+/* Which stored scene the commanded target shows (scenes.c). */
+const uint8_t *scene_for_target(uint32_t target)
 {
-    if (x < FB_W && y < FB_H) {
-        uint32_t p = (uint32_t)FB[y * FB_W + x] + v;
-        FB[y * FB_W + x] = (p > 255u) ? 255u : (uint8_t)p;
-    }
+    const target_t *t = &g_config.catalog[target & 7u];
+    uint32_t idx = t->scene;
+    if (idx >= SCENE_COUNT) idx = 0u;
+    return scene_data[idx];
 }
 
 static void do_capture(void)
@@ -50,45 +52,37 @@ static void do_capture(void)
     CAM->cstat |= CSTAT_BUSY;
     SENSORS[SLOT_CAM].power_mw = 240u;        /* imaging draw               */
 
-    const target_t *t = &g_config.catalog[CAM->target & 7u];
-    uint32_t seed = ((uint32_t)t->ra * 2654435761u)
-                  ^ ((uint32_t)(uint16_t)t->dec * 40503u)
-                  ^ 0x534A0000u;
-    if (!seed) seed = 1;
+    /* Read the stored scene for this target, run it through the imaging
+     * pipeline, and write the result into the frame buffer (imaging.c). */
+    image_process(scene_for_target(CAM->target), (uint8_t *)FB);
 
-    /* Background: faint deterministic sky noise. */
-    uint32_t bgrng = seed ^ 0xBADC0DEu;
-    for (uint32_t i = 0; i < FRAMEBUF_SIZE; i++)
-        FB[i] = (uint8_t)(xorshift32(&bgrng) & 0x7u);
-
-    /* Stars: count and placement fixed by the catalog entry; brightness
-     * through the exposure chain.  scale = exposure_ms * gain / 4096. */
-    uint32_t nstars = 6u + (seed % 10u);
-    uint32_t resolvable = 0;
-    for (uint32_t s = 0; s < nstars; s++) {
-        uint32_t x = 2u + xorshift32(&seed) % (FB_W - 4u);
-        uint32_t y = 2u + xorshift32(&seed) % (FB_H - 4u);
-        uint32_t base = 30u + xorshift32(&seed) % 140u;
-        uint32_t core = (base * CAM->exposure_ms * CAM->gain) >> 12;
-        plot(x, y, core);
-        plot(x - 1, y, core / 2u); plot(x + 1, y, core / 2u);
-        plot(x, y - 1, core / 2u); plot(x, y + 1, core / 2u);
-        uint32_t px = FB[y * FB_W + x];
-        if (px >= 120u && px < 250u) resolvable++;
-    }
-
-    /* Statistics from the actual pixels. */
-    uint32_t sum = 0, max = 0, sat = 0;
-    for (uint32_t i = 0; i < FRAMEBUF_SIZE; i++) {
+    /* Statistics computed from the pixels actually written to the frame
+     * buffer, so they describe the downlinked product, not the source. */
+    uint32_t sum = 0, max = 0, sat = 0, bright = 0;
+    for (uint32_t i = 0; i < SCENE_PIXELS; i++) {
         uint32_t p = FB[i];
         sum += p;
         if (p > max) max = p;
-        if (p >= 250u) sat++;
+        if (p >= 250u) sat++;                 /* clipped                   */
     }
-    CAM->hist_mean = sum / FRAMEBUF_SIZE;
+    /* Resolved sources: bright, unclipped LOCAL MAXIMA. A flat bright
+     * field — an overexposed frame — has none, so this counts real point
+     * sources rather than merely bright pixels. */
+    for (uint32_t y = 1; y < SCENE_H - 1u; y++) {
+        for (uint32_t x = 1; x < SCENE_W - 1u; x++) {
+            uint32_t p = FB[y * SCENE_W + x];
+            if (p < 180u || p >= 250u) continue;
+            if (p >  FB[y * SCENE_W + x - 1] &&
+                p >= FB[y * SCENE_W + x + 1] &&
+                p >  FB[(y - 1) * SCENE_W + x] &&
+                p >= FB[(y + 1) * SCENE_W + x])
+                bright++;
+        }
+    }
+    CAM->hist_mean = sum / SCENE_PIXELS;
     CAM->hist_max  = max;
-    CAM->sat_pct   = (sat * 100u) / FRAMEBUF_SIZE;
-    CAM->stars     = resolvable;
+    CAM->sat_pct   = (sat * 100u) / SCENE_PIXELS;
+    CAM->stars     = bright;
     CAM->frame_id++;
 
     SENSORS[SLOT_CAM].power_mw = 60u;

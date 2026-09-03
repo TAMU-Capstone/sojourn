@@ -19,6 +19,9 @@ KEY_SYMBOLS = [
     "flight_init", "task_heater", "task_power_mgr", "task_acs", "task_recorder",
     "g_heater_on", "g_heater_mw", "g_shed_count", "g_propellant_mg",
     "g_momentum", "g_desat_count", "g_rec_fill", "g_auth",
+    # imaging pipeline (imaging.c / scenes.c)
+    "image_process", "imaging_init", "cam_lut", "cam_kernel",
+    "scene_data", "scene_for_target",
     # boot
     "rom_services", "rom_prot", "vectors",
 ]

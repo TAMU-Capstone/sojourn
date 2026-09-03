@@ -19,17 +19,17 @@ void config_init(void)
     g_config.cam_gain          = 16u;
     g_config.cam_binning       = 1u;
 
-    /* Target catalog: {RA (0.1 deg), DEC (0.1 deg), magnitude, flags}.
-     * Entry 0 is the mission's standing survey field. */
+    /* {RA, DEC, magnitude, flags, scene, rsv} — `scene` selects the stored
+     * image this target returns, so retargeting changes the picture. */
     static const target_t defaults[8] = {
-        { 2551,  -172, 12, 1 },   /* 0: survey field K-25 (default)        */
-        {  831,   412,  9, 1 },   /* 1: calibration star HR-2941           */
-        { 1904,  -601, 14, 1 },   /* 2: comet 41P recovery field           */
-        { 3358,   228, 11, 1 },   /* 3: outer-belt object 2007-XV56        */
-        {  120,   885,  8, 1 },   /* 4: polar reference field              */
-        { 2789,  -334, 13, 1 },   /* 5: KBO search field D-9               */
-        {    0,     0,  0, 0 },   /* 6: (unassigned)                       */
-        {    0,     0,  0, 0 },   /* 7: (unassigned)                       */
+        { 2551,  -172, 12, 1, 0, 0 },   /* 0: survey field K-25 (default)  */
+        {  831,   412,  9, 1, 1, 0 },   /* 1: calibration star HR-2941     */
+        { 1904,  -601, 14, 1, 2, 0 },   /* 2: comet 41P recovery field     */
+        { 3358,   228, 11, 1, 3, 0 },   /* 3: outer-belt object 2007-XV56  */
+        {  120,   885,  8, 1, 0, 0 },   /* 4: polar reference field        */
+        { 2789,  -334, 13, 1, 2, 0 },   /* 5: KBO search field D-9         */
+        {    0,     0,  0, 0, 0, 0 },   /* 6: (unassigned)                 */
+        {    0,     0,  0, 0, 0, 0 },   /* 7: (unassigned)                 */
     };
     xmemcpy(g_config.catalog, defaults, sizeof defaults);
 
@@ -53,6 +53,11 @@ void config_init(void)
     g_config.rec_buffer_max     = 4096;
     g_config.rec_gen_per_sensor = 8;     /* 6 sensors -> 48/s generated      */
     g_config.rec_downlink_rate  = 64;    /* drains faster than it fills      */
+
+    /* Imaging pipeline: the LUT stage is live but ships as an identity
+     * ramp, so inverting the downlinked image is a pure data patch. */
+    g_config.cam_filter         = FILT_LUT;
+    g_config.cam_kdiv           = 1;
 
     g_config.eng_key            = 0x5A3C96E1u; /* engineering-command key    */
 }

@@ -16,7 +16,11 @@ typedef struct {
 extern task_t task_table[N_TASKS];
 
 /* ---- config block (spec §7): runtime-initialized tunables ---- */
-typedef struct { uint16_t ra; int16_t dec; uint8_t mag; uint8_t flags; } target_t;
+typedef struct {
+    uint16_t ra; int16_t dec; uint8_t mag; uint8_t flags;
+    uint8_t  scene;                 /* which stored scene this target shows */
+    uint8_t  rsv;
+} target_t;                         /* 8 bytes                              */
 typedef struct {
     uint32_t tlm_period;            /* ticks between telemetry frames      */
     uint32_t mag_fault_after_s;     /* scripted magnetometer degradation   */
@@ -52,6 +56,10 @@ typedef struct {
     uint16_t rec_gen_per_sensor;    /* data generated per active sensor/s   */
     uint16_t rec_downlink_rate;     /* recorder drain per second           */
 
+    uint8_t  cam_filter;            /* imaging pipeline stages (FILT_*)     */
+    uint8_t  cam_kdiv;              /* convolution divisor                  */
+    uint16_t _rsv5;
+
     uint32_t eng_key;               /* engineering-command auth key         */
 } config_t;
 extern config_t g_config;
@@ -75,6 +83,24 @@ extern uint8_t  g_desat_count;
 extern uint16_t g_rec_fill;                 /* recorder buffer occupancy     */
 extern uint8_t  g_auth;                     /* engineering command unlocked  */
 
+/* ---- imaging pipeline (imaging.c): all patchable ---- */
+#define SCENE_W       64u
+#define SCENE_H       64u
+#define SCENE_PIXELS  (SCENE_W * SCENE_H)
+#define SCENE_COUNT   4u
+
+/* cam_filter stages, OR-ed together */
+#define FILT_NONE     0x00u
+#define FILT_LUT      0x01u         /* map every pixel through cam_lut[]    */
+#define FILT_CONV     0x02u         /* 3x3 convolution with cam_kernel[]    */
+
+extern const uint8_t *const scene_data[SCENE_COUNT];
+extern uint8_t cam_lut[256];        /* transfer curve — invert lives here   */
+extern int8_t  cam_kernel[9];       /* 3x3 convolution coefficients         */
+
+void imaging_init(void);
+void image_process(const uint8_t *src, uint8_t *dst);
+
 static inline uint32_t ticks_now(void) { return ROM_SVC->get_ticks(); }
 static inline uint32_t uptime_s(void)  { return ticks_now() / TICK_HZ; }
 
@@ -97,6 +123,7 @@ void task_sensor_poll(void);
 void task_fault_monitor(void);
 void enter_safe(void);
 void camera_init(void);
+const uint8_t *scene_for_target(uint32_t target);
 void task_camera(void);
 void telemetry_init(void);
 void task_telemetry(void);
