@@ -57,3 +57,8 @@ dkms.conf
 # firmware build output
 firmware/build/
 _to_delete/
+
+# macOS / Office cruft
+.DS_Store
+~$*
+Claude outputs/

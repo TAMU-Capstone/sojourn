@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gen_scenes.py — build the probe's stored camera scenes.
 
-Emits app/scenes.c: SCENE_COUNT raw 64x64 8-bit grayscale images placed in
+Emits app/scenes.c: SCENE_COUNT raw 96x96 8-bit grayscale images placed in
 the ROM **detector image store**, a fixed-address region OUTSIDE the golden
 application image. The player's binary therefore contains no pixels — only
 the code that reads them. See spec §6.4a.
