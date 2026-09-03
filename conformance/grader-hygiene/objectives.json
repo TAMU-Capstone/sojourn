@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "objectives": [
+    {
+      "id": "aux-uncontaminated",
+      "title": "Evaluation does not perturb the probe",
+      "brief": "The AUX channel must keep reporting the player's last command, not the grader's reads.",
+      "points": 0,
+      "success": {
+        "op": "sustained",
+        "frames": 3,
+        "of": {
+          "op": "all",
+          "of": [
+            { "op": "tlm", "path": "channels.AUX", "cmp": "eq", "value": "0x2F40" },
+            { "op": "mem_u8", "at": { "sym": "g_hga_ok" }, "cmp": "eq", "value": 1 }
+          ]
+        }
+      },
+      "hints": [
+        { "after_frames": 6,
+          "text": "If this never completes, the daemon is reading memory over the command channel. See the Introspection API specification, section 2.2." }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "scenario": "sojourn.conformance.grader-hygiene",
+  "revision": 1,
+  "frames": 13,
+  "objectives": [
+    {
+      "id": "aux-uncontaminated",
+      "state": "complete",
+      "first_frame": 3
+    }
+  ],
+  "budget": {
+    "writes": 0,
+    "reads": 0
+  }
+}

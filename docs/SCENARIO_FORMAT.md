@@ -6,7 +6,7 @@
 | **Project** | "Sojourn" Reverse Engineering Game Platform |
 | **Version** | 1.0 (Draft) |
 | **Date** | September 3, 2026 |
-| **Authors** | Trevor Bakker (sponsor) with Claude |
+| **Author** | Trevor Bakker |
 | **Status** | Normative. Charter R11.3 and R13 are satisfied by conformance to this document. |
 
 ---
@@ -306,16 +306,18 @@ This is what a daemon must actually guarantee, and the part most likely to be go
 | `frame` | The decoded telemetry frame, in the shape `tlm_decode.py --json` emits. That tool is normative for the decode (firmware spec §9). |
 | `events` | Event strings computed for this frame against the previous one. |
 | `history` | Previously decoded frames, oldest first, for `sustained` / `within` / `ever`. |
-| `mem` | A read handle, `(address, length) -> bytes`. |
+| `mem` | A read handle, `(address, length) -> bytes`, served over the **introspection channel** — never over the player's uplink. See the *Introspection API* specification. |
 | `baseline` | Memory contents captured after setup and before the first player command, for `mem_changed`. |
 | `log` | The command log so far (§8). |
 | `budget` | Commands charged per resource. |
 
-**Memory snapshot semantics.** All `mem` reads within one evaluation pass **shall** observe the probe as of that frame boundary. An implementation that reads live memory mid-pass can see a value change between two predicates of the same objective, which makes conjunctions unsound. Snapshot the ranges the pass needs, or halt the probe for the pass.
+**Memory snapshot semantics.** All `mem` reads within one evaluation pass **shall** observe the probe as of that frame boundary. An implementation that reads live memory mid-pass can see a value change between two predicates of the same objective, which makes conjunctions unsound. The *Introspection API* specification settles how: halt the guest for the pass, read, resume. Halting costs nothing observable — the guest clock stops with it — so this is both the correct and the cheap option.
 
 **Latching.** Unless `retractable` is true, an objective that reaches `complete` stays `complete`. `failed` always latches.
 
-**Missing data is false.** A predicate over an absent channel, a path that does not exist, or a frame that failed CRC is **false**. It is never an error and never aborts the pass. A scenario that wants "the sensor is gone" says so with `channel_absent`.
+**Missing telemetry is false.** A predicate over an absent channel, a path that does not exist, or a frame that failed CRC is **false**. It is never an error and never aborts the pass. A scenario that wants "the sensor is gone" says so with `channel_absent`.
+
+**A failed memory read is not false — it is an error.** If introspection fails (connection lost, timeout, error reply, short read) the daemon **shall** abort the pass, leave every objective state unchanged, and surface the failure. Treating it as false would mark correct patches incomplete because the *grader* broke, and it would look exactly like the player being wrong. The *Introspection API* specification, I15, is normative here.
 
 ---
 

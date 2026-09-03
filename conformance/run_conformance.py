@@ -37,10 +37,14 @@ SCENARIOS = HERE.parent / "scenarios"
 REF_EVAL = HERE.parent / "firmware" / "tools" / "scenario_eval.py"
 REF_VALIDATE = HERE.parent / "firmware" / "tools" / "scenario_validate.py"
 
+# (package directory, fixture stem). Packages live under scenarios/ unless
+# the directory exists here, which is how the conformance-only fixtures stay
+# out of player-facing content.
 FIXTURES = [
-    ("first-contact", "first-contact-solution"),
-    ("comms-triage",  "comms-triage-solution"),
-    ("comms-triage",  "comms-triage-passive"),
+    ("first-contact",  "first-contact-solution"),
+    ("comms-triage",   "comms-triage-solution"),
+    ("comms-triage",   "comms-triage-passive"),
+    ("grader-hygiene", "grader-hygiene"),
 ]
 
 
@@ -109,7 +113,7 @@ def run_replay(daemon, quiet):
     print("== replay suite ==")
     passed = failed = 0
     for scen, fixture in FIXTURES:
-        pkg = SCENARIOS / scen
+        pkg = HERE / scen if (HERE / scen / "manifest.json").exists() else SCENARIOS / scen
         log = HERE / f"{fixture}.jsonl"
         expected = json.load(open(HERE / f"{fixture}.expected.json"))
         with tempfile.TemporaryDirectory() as tmp:

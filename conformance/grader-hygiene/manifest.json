@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "id": "sojourn.conformance.grader-hygiene",
+  "title": "Grader Hygiene",
+  "revision": 1,
+  "author": "ISA Flight Operations",
+  "summary": "Conformance fixture: detects a daemon that evaluates objectives over the player's command channel.",
+  "difficulty": "conformance",
+  "firmware": {
+    "rom": "firmware/probe_rom.elf",
+    "symbols": "firmware/symbols.json",
+    "memmap": "firmware/memmap.json",
+    "app_crc32": "0xf72478e0"
+  },
+  "link": { "uplink_delay_s": 0, "downlink_delay_s": 0, "require_checksum": true },
+  "briefing": "briefing.md",
+  "objectives": "objectives.json"
+}

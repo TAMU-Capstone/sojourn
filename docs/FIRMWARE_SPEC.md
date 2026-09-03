@@ -6,7 +6,7 @@
 | **Project** | "Sojourn" Reverse Engineering Game Platform |
 | **Version** | 1.0 (Draft — high/low gain antennas modelled as hardware; telemetry cadence fixed at 5 s; §15 closed) |
 | **Date** | September 3, 2026 |
-| **Authors** | Trevor Bakker (sponsor) with Claude |
+| **Author** | Trevor Bakker |
 | **Audience** | Instructor and capstone team. **This document is not player-facing** — the player-facing *Recovered Mission Operations Manual* is derived from it with deliberate omissions (§14). |
 
 ---

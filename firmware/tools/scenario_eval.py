@@ -128,12 +128,13 @@ class Probe:
                 return line
         return None
 
-    def read_mem(self, addr, length):
-        """Read memory the way the ground does: PEEK, 64 bytes at a time.
+    def peek_mem(self, addr, length):
+        """Read memory over the COMMAND channel, as the player does.
 
-        The evaluator uses the player's own read path rather than a debugger
-        backdoor, so a package cannot assert against state the ground could
-        not itself observe.
+        NON-CONFORMING for grading — see the Introspection API spec §2. It is
+        kept only to demonstrate the failures that document describes: these
+        reads set g_last_cmd_crc, so the AUX telemetry channel starts
+        reporting the grader's reads instead of the player's commands.
         """
         out = b""
         while len(out) < length:
@@ -152,6 +153,130 @@ class Probe:
             pass
         self.proc.kill()
         self.proc.wait(timeout=5)
+
+
+# --------------------------------------------------------------------------
+# introspection channel (Introspection API spec)
+#
+# Out of band, read only, guest halted for the duration of one evaluation
+# pass. Never touches the command channel, so grading neither costs the
+# player budget nor perturbs anything the player can observe.
+# --------------------------------------------------------------------------
+class IntrospectionError(RuntimeError):
+    """A read failed. Per I15 this aborts the pass; it is never 'false'."""
+
+
+class Introspect:
+    CHUNK = 1024                      # I9
+
+    def __init__(self, port, timeout=5.0):
+        self.sock = socket.create_connection(("127.0.0.1", port), timeout)
+        self.sock.settimeout(timeout)
+        self.buf = b""
+        self.packet_size = 0x400
+        # Attaching stops the machine on both QEMU and Renode. Sending an
+        # interrupt to an already-stopped target produces no stop reply and
+        # hangs, so the initial state has to be recorded, not assumed idle.
+        self.halted = True
+        try:
+            sup = self._rpc("qSupported:multiprocess+")
+            m = re.search(r"PacketSize=([0-9a-fA-F]+)", sup or "")
+            if m:
+                self.packet_size = int(m.group(1), 16)
+        except IntrospectionError:
+            pass                       # the default is safe
+        self.resume()                  # let the probe fly between passes
+
+    # ---- framing (I6) ----
+    @staticmethod
+    def _checksum(payload):
+        return sum(payload.encode()) & 0xFF
+
+    @staticmethod
+    def _rle_expand(data):
+        """RSP run-length encoding: '*' + (count+29) additional repeats.
+
+        QEMU does not currently emit this, so a decoder that omits it passes
+        every QEMU test and then silently corrupts data under Renode.
+        """
+        if "*" not in data:
+            return data
+        out, i = [], 0
+        while i < len(data):
+            c = data[i]
+            if c == "*" and out and i + 1 < len(data):
+                out.append(out[-1] * (ord(data[i + 1]) - 29))
+                i += 2
+            else:
+                out.append(c)
+                i += 1
+        return "".join(out)
+
+    def _send(self, payload):
+        self.sock.sendall(f"+${payload}#{self._checksum(payload):02x}".encode())
+
+    def _recv_packet(self):
+        while True:
+            start = self.buf.find(b"$")
+            end = self.buf.find(b"#", start + 1) if start >= 0 else -1
+            if start >= 0 and end >= 0 and len(self.buf) >= end + 3:
+                body = self.buf[start + 1:end].decode(errors="replace")
+                self.buf = self.buf[end + 3:]
+                return self._rle_expand(body)
+            try:
+                d = self.sock.recv(65536)
+            except (socket.timeout, OSError) as e:
+                raise IntrospectionError(f"introspection read timed out: {e}")
+            if not d:
+                raise IntrospectionError("introspection channel closed")
+            self.buf += d
+
+    def _rpc(self, payload):
+        self._send(payload)
+        return self._recv_packet()
+
+    # ---- the snapshot window (I10) ----
+    def halt(self):
+        if self.halted:
+            return
+        self.sock.sendall(b"\x03")
+        try:
+            self._recv_packet()        # stop reply, e.g. T02thread:...
+        except IntrospectionError:
+            self._rpc("?")             # stub did not answer the interrupt
+        self.halted = True
+
+    def resume(self):
+        if not self.halted:
+            return
+        self._send("c")
+        self.halted = False
+
+    def read_mem(self, addr, length):
+        """Chunked read (I8/I9). Raises rather than returning partial data."""
+        out = b""
+        while len(out) < length:
+            n = min(self.CHUNK, length - len(out))
+            reply = self._rpc(f"m{addr + len(out):08x},{n:x}")
+            if reply is None or reply == "" or reply.startswith("E"):   # I7
+                raise IntrospectionError(
+                    f"read of {n} bytes at 0x{addr + len(out):08X} failed: {reply!r}")
+            try:
+                chunk = bytes.fromhex(reply)
+            except ValueError:
+                raise IntrospectionError(f"non-hex reply for 0x{addr:08X}: {reply[:40]!r}")
+            if len(chunk) != n:
+                raise IntrospectionError(
+                    f"short read at 0x{addr + len(out):08X}: wanted {n}, got {len(chunk)}")
+            out += chunk
+        return out
+
+    def close(self):
+        try:
+            self._send("D")
+            self.sock.close()
+        except OSError:
+            pass
 
 
 # --------------------------------------------------------------------------
@@ -214,12 +339,20 @@ class Context:
         self.log = []
         self.budget = {"writes": 0, "reads": 0}
         self.probe = None
+        self.introspect = None         # Introspect, or None for --introspect peek
 
     def mem(self, addr, length):
-        """Frame-boundary snapshot: repeated reads in one pass agree."""
+        """Frame-boundary snapshot: repeated reads in one pass agree (I11).
+
+        The guest is already halted by the caller for the whole pass, so
+        every range read here observes one instant of probe state.
+        """
         key = (addr, length)
         if key not in self.snapshot:
-            self.snapshot[key] = self.probe.read_mem(addr, length)
+            if self.introspect is not None:
+                self.snapshot[key] = self.introspect.read_mem(addr, length)
+            else:
+                self.snapshot[key] = self.probe.peek_mem(addr, length)
         return self.snapshot[key]
 
 
@@ -385,13 +518,16 @@ class Session:
             return "reads"
         return None
 
-    def run(self, log_records=None, script=None, max_frames=None):
+    def run(self, log_records=None, script=None, max_frames=None,
+            introspect="gdb"):
         probe = Probe(self.rom)
         ctx = Context(self.syms)
         ctx.probe = probe
         ctx.latched, ctx.streak = {}, {}
         try:
             probe.readline(20)                     # banner
+            if introspect == "gdb":
+                ctx.introspect = Introspect(GDB_PORT)
 
             # ---- setup: initial conditions, not moves ----
             if self.setup:
@@ -410,11 +546,17 @@ class Session:
                     probe.next_frame()
 
             # ---- baseline for mem_changed, captured after setup ----
+            if ctx.introspect:
+                ctx.introspect.halt()
             for pred in self._all_predicates():
                 if pred.get("op") == "mem_changed":
                     a = self.syms.resolve(pred["at"])
                     n = int(pred["len"])
-                    ctx.baseline[(a, n)] = probe.read_mem(a, n)
+                    ctx.baseline[(a, n)] = (ctx.introspect.read_mem(a, n)
+                                            if ctx.introspect
+                                            else probe.peek_mem(a, n))
+            if ctx.introspect:
+                ctx.introspect.resume()
 
             moves = list(log_records or [])
             if script:
@@ -462,12 +604,23 @@ class Session:
                 ctx.snapshot = {}                  # fresh per frame
                 frames += 1
 
-                self._evaluate_pass(ctx, frames)
+                # The snapshot window (I10 steps 3-5): halt, read, resume.
+                # Halting is free — the guest clock stops with it, so the
+                # length of this window is invisible to the firmware.
+                if ctx.introspect:
+                    ctx.introspect.halt()
+                try:
+                    self._evaluate_pass(ctx, frames)
+                finally:
+                    if ctx.introspect:
+                        ctx.introspect.resume()
                 ctx.history.append(frame)
 
             self.log = ctx.log
             return self._result(frames, ctx)
         finally:
+            if ctx.introspect:
+                ctx.introspect.close()
             probe.close()
 
     def _all_predicates(self):
@@ -557,6 +710,10 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--frames", type=int)
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--introspect", choices=["gdb", "peek"], default="gdb",
+                    help="'gdb' is the conforming out-of-band channel; 'peek' "
+                         "reads over the command channel and exists only to "
+                         "demonstrate why that is wrong (Introspection API §2)")
     a = ap.parse_args()
 
     records = script = None
@@ -569,7 +726,8 @@ def main():
     s = Session(a.scenario, verbose=a.verbose)
     if a.verbose:
         print(f"scenario {s.manifest['id']} rev {s.manifest['revision']}", flush=True)
-    result = s.run(log_records=records, script=script, max_frames=a.frames)
+    result = s.run(log_records=records, script=script, max_frames=a.frames,
+                   introspect=a.introspect)
 
     text = json.dumps(result, indent=2)
     if a.out:
