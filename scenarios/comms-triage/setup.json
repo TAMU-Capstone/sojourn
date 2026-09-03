@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "writes": [
+    {
+      "at": { "sym": "g_config", "field": "hga_fail_after_s" },
+      "u32": 20,
+      "note": "A rib backs out twenty seconds in: the dish falls out of full deployment and stalls at hga_jam_at_pct (40%), and the flight software falls back to the omni. Twenty seconds rather than five minutes so the scenario opens with the failure rather than waiting for it."
+    }
+  ],
+  "settle_frames": 0
+}

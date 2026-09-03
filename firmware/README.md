@@ -215,9 +215,54 @@ read-only alongside a scripted uplink session against `run-tcp`
 
 ## Verify
 
-    make test    # 81 checks: framing, protocol, protection, objective-1
+    make test    # 99 checks: framing, protocol, protection, objective-1
                  # flow, camera + imaging pipeline, flight functions,
-                 # trampoline patching, brick + watchdog recovery
+                 # antennas + bandwidth triage, trampoline patching,
+                 # brick + watchdog recovery
+
+## Scenario tooling (`tools/scenario_*.py`)
+
+These two belong to the *Scenario Package Format* specification rather than to
+the firmware, but they live here because they need the build's `symbols.json`
+and a probe to talk to.
+
+`scenario_validate.py` checks a package statically — schema, symbol and field
+resolution, memory-map bounds, dependency cycles, purity. It never starts a
+probe, so it is fast enough for CI and for every save:
+
+    python3 tools/scenario_validate.py ../scenarios/*        # PASS / FAIL
+    python3 tools/scenario_validate.py --strict ../scenarios/comms-triage
+
+`scenario_eval.py` is the **reference evaluator**: it boots a real probe,
+applies a command log or a plain-text move list, evaluates the objectives
+frame by frame, and reports which completed. It exists to prove the assertion
+vocabulary is sufficient and to generate conformance fixtures — it is an
+oracle, not a starting point for the game daemon.
+
+    # play a scenario from a move list and record the log
+    python3 tools/scenario_eval.py --scenario ../scenarios/comms-triage \
+        --script ../scenarios/comms-triage/solution.txt \
+        --record run.jsonl --out state.json --verbose
+
+    # replay an existing log (the conformance entry point, format spec §10)
+    python3 tools/scenario_eval.py conform \
+        --scenario ../scenarios/comms-triage --replay run.jsonl --out state.json
+
+`--verbose` prints objective transitions as they happen:
+
+    scenario sojourn.comms.triage rev 1
+      frame   5  diagnose -> complete
+      frame   6  attempt-redeploy -> complete
+      frame   8  restore-radiation -> complete
+      frame   8  keep-budget -> complete
+
+The whole acceptance gate — reference packages accepted, nine seeded defects
+rejected, three replay fixtures agreeing — runs from the repository root:
+
+    python3 conformance/run_conformance.py --reference     # 14 checks
+
+Note that `symbols.json` is authoring material. It resolves the symbol names
+scenarios reference, and it must never ship in a player image (charter R19).
 
 ## Layout
 
@@ -235,7 +280,8 @@ read-only alongside a scripted uplink session against `run-tcp`
     app/config.c       mission config block + target catalog + function tunables
     ld/                boot.ld (ROM), app.ld (execute-in-place at 0x20001000)
     tools/             image fixup, symbols generator, telemetry decoder,
-                       image recovery (PNG), scene generator, e2e test
+                       image recovery (PNG), scene generator, e2e test,
+                       scenario validator + reference evaluator
     include/probe.h    the memory-map contract (matches memmap.json)
 
 ## Camera images and the processing pipeline

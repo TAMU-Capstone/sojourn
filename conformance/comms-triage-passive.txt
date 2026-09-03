@@ -1,0 +1,4 @@
+# A run that observes but never repairs: diagnosis only.
+PEEK 0x2001E200 16
+PEEK 0x20019438 10
+PING

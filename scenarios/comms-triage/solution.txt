@@ -1,0 +1,7 @@
+# survey the comms register block
+PEEK 0x2001E200 16
+# command the deployment drive: TX_EN | DEPLOY
+POKE 0x2001E200 09
+# exchange priority entries 2 and 6: RAD takes the surviving slot, MAG takes the dropped one
+POKE 0x2001943A 04
+POKE 0x2001943E 00

@@ -1,0 +1,83 @@
+{
+  "format": 1,
+  "regions": [
+    {
+      "name": "ROM_VECTORS",
+      "lo": "0x00000000",
+      "hi": "0x00000400",
+      "poke": "refused"
+    },
+    {
+      "name": "ROM_BOOT",
+      "lo": "0x00000400",
+      "hi": "0x00004000",
+      "poke": "refused"
+    },
+    {
+      "name": "ROM_GOLDEN",
+      "lo": "0x00004000",
+      "hi": "0x00040000",
+      "poke": "refused"
+    },
+    {
+      "name": "NOINIT",
+      "lo": "0x20000000",
+      "hi": "0x20000100",
+      "poke": "refused"
+    },
+    {
+      "name": "SYSBLK",
+      "lo": "0x20000100",
+      "hi": "0x20001000",
+      "poke": "refused"
+    },
+    {
+      "name": "APP",
+      "lo": "0x20001000",
+      "hi": "0x20019000",
+      "poke": "writable"
+    },
+    {
+      "name": "APP_DATA",
+      "lo": "0x20019000",
+      "hi": "0x2001D000",
+      "poke": "writable"
+    },
+    {
+      "name": "FREE_RAM",
+      "lo": "0x2001D000",
+      "hi": "0x2001E000",
+      "poke": "writable"
+    },
+    {
+      "name": "SENSOR_BLOCK",
+      "lo": "0x2001E000",
+      "hi": "0x2001E100",
+      "poke": "writable"
+    },
+    {
+      "name": "CAM_REGS",
+      "lo": "0x2001E100",
+      "hi": "0x2001E200",
+      "poke": "writable"
+    },
+    {
+      "name": "COMMS_REGS",
+      "lo": "0x2001E200",
+      "hi": "0x2001F000",
+      "poke": "writable"
+    },
+    {
+      "name": "STACKS",
+      "lo": "0x2001F000",
+      "hi": "0x20020000",
+      "poke": "writable"
+    },
+    {
+      "name": "CAM_FRAMEBUF",
+      "lo": "0x20020000",
+      "hi": "0x20022400",
+      "poke": "writable"
+    }
+  ]
+}

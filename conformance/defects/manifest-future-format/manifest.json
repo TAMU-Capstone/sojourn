@@ -1,0 +1,27 @@
+{
+  "format": 99,
+  "id": "sojourn.comms.triage",
+  "title": "Bandwidth",
+  "revision": 1,
+  "author": "ISA Flight Operations",
+  "summary": "The high-gain antenna has failed. Decide what science is worth the downlink you have left.",
+  "difficulty": "intermediate",
+  "firmware": {
+    "rom": "../../../scenarios/comms-triage/firmware/probe_rom.elf",
+    "symbols": "../../../scenarios/comms-triage/firmware/symbols.json",
+    "memmap": "../../../scenarios/comms-triage/firmware/memmap.json",
+    "app_crc32": "0xf72478e0"
+  },
+  "link": {
+    "uplink_delay_s": 8,
+    "downlink_delay_s": 8,
+    "require_checksum": true,
+    "budget": {
+      "writes": 40,
+      "reads": 2000
+    }
+  },
+  "briefing": "briefing.md",
+  "setup": "setup.json",
+  "objectives": "objectives.json"
+}

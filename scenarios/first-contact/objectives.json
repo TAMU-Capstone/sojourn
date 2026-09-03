@@ -1,0 +1,152 @@
+{
+  "format": 1,
+  "objectives": [
+    {
+      "id": "establish-link",
+      "title": "Establish the link",
+      "brief": "Raise the probe and confirm it is listening.",
+      "points": 5,
+      "success": {
+        "op": "ever",
+        "of": {
+          "op": "commanded",
+          "verb": "PING",
+          "result": "ACK"
+        }
+      },
+      "hints": [
+        {
+          "after_frames": 4,
+          "text": "Section 3.1 of the manual lists the commands the probe accepts. Start with the one that costs nothing."
+        }
+      ]
+    },
+    {
+      "id": "read-the-downlink",
+      "title": "Read the downlink",
+      "brief": "Confirm the probe is healthy and reporting science. All six instruments should be present in the frame.",
+      "requires": [
+        "establish-link"
+      ],
+      "points": 10,
+      "success": {
+        "op": "all",
+        "of": [
+          {
+            "op": "tlm",
+            "path": "mode",
+            "cmp": "eq",
+            "value": "NOMINAL"
+          },
+          {
+            "op": "channel_present",
+            "id": "MAG"
+          },
+          {
+            "op": "channel_present",
+            "id": "IMU"
+          },
+          {
+            "op": "channel_present",
+            "id": "THM"
+          },
+          {
+            "op": "channel_present",
+            "id": "PWR"
+          },
+          {
+            "op": "channel_present",
+            "id": "RAD"
+          },
+          {
+            "op": "channel_present",
+            "id": "STR"
+          }
+        ]
+      },
+      "hints": [
+        {
+          "after_frames": 6,
+          "text": "Each channel is a type-length-value triple after the fixed header. Manual section 5.3 gives the channel IDs."
+        }
+      ]
+    },
+    {
+      "id": "silence-the-magnetometer",
+      "title": "Silence the magnetometer",
+      "brief": "Power down the magnetometer and confirm from telemetry that its channel has left the downlink entirely.",
+      "requires": [
+        "read-the-downlink"
+      ],
+      "points": 25,
+      "success": {
+        "op": "sustained",
+        "frames": 2,
+        "of": {
+          "op": "all",
+          "of": [
+            {
+              "op": "channel_absent",
+              "id": "MAG"
+            },
+            {
+              "op": "channel_present",
+              "id": "IMU"
+            }
+          ]
+        }
+      },
+      "partial": [
+        {
+          "when": {
+            "op": "all",
+            "of": [
+              {
+                "op": "channel_absent",
+                "id": "MAG"
+              },
+              {
+                "op": "channel_absent",
+                "id": "IMU"
+              }
+            ]
+          },
+          "text": "The magnetometer is quiet, but so is the inertial unit \u2014 and more besides. Whatever you wrote reached further than one instrument. Check the address against the slot size."
+        },
+        {
+          "when": {
+            "op": "all",
+            "of": [
+              {
+                "op": "channel_present",
+                "id": "MAG"
+              },
+              {
+                "op": "commanded",
+                "verb": "POKE",
+                "result": "ACK"
+              }
+            ]
+          },
+          "text": "A write was accepted but the magnetometer is still reporting. Either the address was not its control register, or the bit you cleared was not the power bit."
+        }
+      ],
+      "fail": {
+        "op": "tlm",
+        "path": "mode",
+        "cmp": "eq",
+        "value": "SAFE"
+      },
+      "hints": [
+        {
+          "after_frames": 10,
+          "text": "The sensor register block is eight identical slots. Manual section 6.1 gives the slot layout; the base address of the block is not in the recovered pages."
+        },
+        {
+          "after_frames": 20,
+          "text": "Each slot is 16 bytes: control, status, data, power draw. Bit 0 of control is power."
+        }
+      ]
+    }
+  ]
+}

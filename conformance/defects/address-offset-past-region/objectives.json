@@ -1,0 +1,225 @@
+{
+  "format": 1,
+  "objectives": [
+    {
+      "id": "diagnose",
+      "title": "Diagnose the downlink",
+      "brief": "Establish that the probe has fallen back to the low-gain antenna, and that the high-gain dish is no longer fully deployed.",
+      "points": 10,
+      "success": {
+        "op": "mem",
+        "at": {
+          "sym": "tlm_priority",
+          "offset": 262144
+        },
+        "len": 4,
+        "cmp": "eq",
+        "value": "00000000"
+      },
+      "hints": [
+        {
+          "after_frames": 4,
+          "text": "Channel 0x61 carries the link state. Manual section 5.5 gives its layout."
+        },
+        {
+          "after_frames": 12,
+          "text": "The deployment percentage is in the channel. Compare it to what the status flags claim."
+        }
+      ]
+    },
+    {
+      "id": "attempt-redeploy",
+      "title": "Attempt to redeploy the dish",
+      "brief": "Command the deployment drive and establish, for the record, whether the mechanism can be recovered.",
+      "requires": [
+        "diagnose"
+      ],
+      "points": 10,
+      "success": {
+        "op": "all",
+        "of": [
+          {
+            "op": "ever",
+            "of": {
+              "op": "commanded",
+              "verb": "POKE",
+              "at": {
+                "addr": "0x2001E200"
+              },
+              "result": "ACK"
+            }
+          },
+          {
+            "op": "mem_bits",
+            "at": {
+              "addr": "0x2001E200"
+            },
+            "width": 4,
+            "mask": 8,
+            "cmp": "eq",
+            "value": 8
+          },
+          {
+            "op": "sustained",
+            "frames": 2,
+            "of": {
+              "op": "tlm",
+              "path": "channels.COMMS.hga_deploy_pct",
+              "cmp": "lt",
+              "value": 95
+            }
+          }
+        ]
+      },
+      "partial": [
+        {
+          "when": {
+            "op": "tlm",
+            "path": "channels.COMMS.hga_deploy_pct",
+            "cmp": "gte",
+            "value": 95
+          },
+          "text": "The dish reached full deployment, which means the jam indication was cleared rather than the mechanism freed. A legitimate patch, but not what this objective records \u2014 it is asking what the drive does against the jam as it stands."
+        },
+        {
+          "when": {
+            "op": "not",
+            "of": {
+              "op": "ever",
+              "of": {
+                "op": "commanded",
+                "verb": "POKE",
+                "at": {
+                  "addr": "0x2001E200"
+                },
+                "result": "ACK"
+              }
+            }
+          },
+          "text": "Nothing has been written to the comms control register yet. The deployment drive has to be commanded before its behavior can be recorded."
+        }
+      ],
+      "hints": [
+        {
+          "after_frames": 6,
+          "text": "The comms control register has a bit for the deployment drive. Manual section 6.5."
+        },
+        {
+          "after_frames": 18,
+          "text": "Watch the deployment percentage across several frames after you command it. Where does it stop, and why there?"
+        }
+      ]
+    },
+    {
+      "id": "restore-radiation",
+      "title": "Restore the radiation counter",
+      "brief": "Get channel 0x04 back into the downlink and keep it there. The frame has room for exactly one science channel; make it the right one.",
+      "requires": [
+        "attempt-redeploy"
+      ],
+      "points": 40,
+      "success": {
+        "op": "sustained",
+        "frames": 3,
+        "of": {
+          "op": "all",
+          "of": [
+            {
+              "op": "channel_present",
+              "id": "RAD"
+            },
+            {
+              "op": "tlm",
+              "path": "channels.COMMS.antenna",
+              "cmp": "eq",
+              "value": "LGA"
+            }
+          ]
+        }
+      },
+      "partial": [
+        {
+          "when": {
+            "op": "all",
+            "of": [
+              {
+                "op": "channel_present",
+                "id": "RAD"
+              },
+              {
+                "op": "tlm",
+                "path": "channels.COMMS.antenna",
+                "cmp": "eq",
+                "value": "HGA"
+              }
+            ]
+          },
+          "text": "The radiation counter is back, but by restoring the high-gain link rather than by triaging the low-gain one. The encounter data is safe either way \u2014 but if the dish drops out again the same channels will vanish again. The priority order is the durable fix."
+        },
+        {
+          "when": {
+            "op": "all",
+            "of": [
+              {
+                "op": "channel_absent",
+                "id": "RAD"
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "tlm_priority"
+                },
+                "len": 10
+              }
+            ]
+          },
+          "text": "The priority table has been modified but the radiation counter still is not surviving the squeeze. Check what you displaced: if you overwrote an entry rather than exchanging two, a channel has been lost from the table entirely."
+        },
+        {
+          "when": {
+            "op": "tlm",
+            "path": "channels.COMMS.dropped",
+            "cmp": "eq",
+            "value": 0
+          },
+          "text": "Nothing is being dropped now, which means the budget is no longer binding. Confirm that was intended \u2014 a larger budget is a legitimate answer, but check what it cost."
+        }
+      ],
+      "hints": [
+        {
+          "after_frames": 8,
+          "text": "The flight software emits channels in a fixed order until the budget runs out. That order is a table in working memory, not in the program image."
+        },
+        {
+          "after_frames": 25,
+          "text": "The table is a byte per channel, using the same channel IDs the downlink uses. Exchange two entries rather than overwriting one."
+        },
+        {
+          "after_frames": 40,
+          "text": "There is more than one honest answer here. The order is one. The link rate is another. The telemetry period is a third \u2014 the budget is the rate spread across one frame interval."
+        }
+      ]
+    },
+    {
+      "id": "keep-budget",
+      "title": "Keep the uplink budget",
+      "brief": "Complete the repair inside the allowance. Sojourn's transmitter is old and every uplink costs a station pass.",
+      "requires": [
+        "restore-radiation"
+      ],
+      "points": 15,
+      "success": {
+        "op": "budget",
+        "resource": "writes",
+        "cmp": "lte",
+        "value": 40
+      },
+      "hints": [
+        {
+          "after_frames": 30,
+          "text": "Reads are metered separately from writes. Survey as much as you like; it is the writes that are scarce."
+        }
+      ]
+    }
+  ]
+}

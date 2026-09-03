@@ -62,3 +62,6 @@ _to_delete/
 .DS_Store
 ~$*
 Claude outputs/
+
+# scenario packages must carry their probe image
+!scenarios/**/*.elf

@@ -1,0 +1,3 @@
+{"seq": 1, "t_ms": null, "raw": "PEEK 0x2001E200 16", "verb": "PEEK", "charged": "reads", "result": "ACK PEEK 01000000030000000000000064000000"}
+{"seq": 2, "t_ms": null, "raw": "PEEK 0x20019438 10", "verb": "PEEK", "charged": "reads", "result": "ACK PEEK 6160000102030405435A"}
+{"seq": 3, "t_ms": null, "raw": "PING", "verb": "PING", "charged": null, "result": "ACK PING"}

@@ -418,11 +418,10 @@ The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pa
 
 | Gap | Status |
 |---|---|
-| **Game daemon** (§13, charter) — scenario loading, objective evaluation, command log, saves by replay | Specified, not built. This is the students' primary deliverable. |
-| **Scenario packages** — `manifest` / `symbols.json` / `memmap.json` / objective assertions as pure content | The firmware side of the seam exists (`make` emits both JSON files); no package format instance yet. |
+| **Game daemon** (§13, charter) — scenario loading, objective evaluation, command log, saves by replay | Specified, not built. This is the students' primary deliverable; its acceptance gate is the conformance suite shipped with the scenario format. |
+| **Scenario packages** | **Specified and exercised.** See the *Scenario Package Format* specification, two reference packages under `scenarios/`, a reference evaluator and validator in `firmware/tools/`, and a 14-check conformance gate in `conformance/`. |
 | **Harness tier** (§6, Renode) — sensors as true MMIO at the same addresses rather than SIM-tier RAM | Specified with identical observable behavior; only the QEMU SIM tier is built. |
 | **Web front end** (charter) — console, telemetry view, objective status | Not started. |
-| **Easter-egg source resolution** | `assets/mimas.png` is 64×64 (Cassini) bilinearly upscaled to 96×96; the other four scenes are native 96×96. A 96×96-or-larger Mimas source would remove the only soft image in the store. |
 
 ---
 

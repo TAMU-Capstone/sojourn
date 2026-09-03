@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "cases": [
+    {
+      "dir": "defects/manifest-missing-revision",
+      "expect_rule": "V1",
+      "why": "required key absent"
+    },
+    {
+      "dir": "defects/manifest-future-format",
+      "expect_rule": "V2",
+      "why": "format newer than the validator"
+    },
+    {
+      "dir": "defects/manifest-firmware-incomplete",
+      "expect_rule": "V1",
+      "why": "firmware block missing app_crc32"
+    },
+    {
+      "dir": "defects/assertion-unknown-op",
+      "expect_rule": "V4",
+      "why": "op that does not exist"
+    },
+    {
+      "dir": "defects/assertion-missing-frames",
+      "expect_rule": "V4",
+      "why": "sustained without 'frames'"
+    },
+    {
+      "dir": "defects/assertion-string-for-int",
+      "expect_rule": "V9",
+      "why": "integer comparison given a string"
+    },
+    {
+      "dir": "defects/address-unmapped-peripheral",
+      "expect_rule": "V6",
+      "why": "address in no region"
+    },
+    {
+      "dir": "defects/address-offset-past-region",
+      "expect_rule": "V6",
+      "why": "symbol + offset leaves the region"
+    },
+    {
+      "dir": "defects/address-setup-out-of-map",
+      "expect_rule": "V6",
+      "why": "setup write outside the map"
+    }
+  ]
+}

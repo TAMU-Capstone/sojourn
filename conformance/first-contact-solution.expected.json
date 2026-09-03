@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "scenario": "sojourn.tutorial.first-contact",
+  "revision": 1,
+  "frames": 15,
+  "objectives": [
+    {
+      "id": "establish-link",
+      "state": "complete",
+      "first_frame": 1
+    },
+    {
+      "id": "read-the-downlink",
+      "state": "complete",
+      "first_frame": 1
+    },
+    {
+      "id": "silence-the-magnetometer",
+      "state": "complete",
+      "first_frame": 4
+    }
+  ],
+  "budget": {
+    "writes": 1,
+    "reads": 1
+  }
+}

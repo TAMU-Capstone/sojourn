@@ -1,0 +1,4 @@
+{"seq": 1, "t_ms": null, "raw": "PEEK 0x2001E200 16", "verb": "PEEK", "charged": "reads", "result": "ACK PEEK 01000000030000000000000064000000"}
+{"seq": 2, "t_ms": null, "raw": "POKE 0x2001E200 09", "verb": "POKE", "charged": "writes", "result": "ACK POKE 1"}
+{"seq": 3, "t_ms": null, "raw": "POKE 0x2001943A 04", "verb": "POKE", "charged": "writes", "result": "ACK POKE 1"}
+{"seq": 4, "t_ms": null, "raw": "POKE 0x2001943E 00", "verb": "POKE", "charged": "writes", "result": "ACK POKE 1"}

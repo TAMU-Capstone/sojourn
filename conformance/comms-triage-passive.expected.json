@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "scenario": "sojourn.comms.triage",
+  "revision": 1,
+  "frames": 15,
+  "objectives": [
+    {
+      "id": "diagnose",
+      "state": "complete",
+      "first_frame": 5
+    },
+    {
+      "id": "attempt-redeploy",
+      "state": "active",
+      "first_frame": null
+    },
+    {
+      "id": "restore-radiation",
+      "state": "locked",
+      "first_frame": null
+    },
+    {
+      "id": "keep-budget",
+      "state": "locked",
+      "first_frame": null
+    }
+  ],
+  "budget": {
+    "writes": 0,
+    "reads": 2
+  }
+}
