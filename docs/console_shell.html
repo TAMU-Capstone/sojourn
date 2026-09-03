@@ -1,0 +1,527 @@
+<title>Sojourn Ground Station</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Barlow:wght@400;500&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --void:#05070b; --panel:#0a0f16; --panel-2:#0d141d; --rule:#18212e;
+  --ink:#c9d6e3; --dim:#62748a; --faint:#3d4a5a;
+  --signal:#7fd4ff; --good:#5fe3a1; --warn:#ffcf6b; --crit:#ff7a6b;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --cond:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--void);color:var(--ink);font-family:var(--body);
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.shell{max-width:1500px;margin:0 auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+
+/* ---------- labels ---------- */
+.lbl{font-family:var(--cond);font-weight:600;font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dim)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---------- menu bar ---------- */
+.menubar{display:flex;align-items:center;gap:2px;background:var(--panel);
+  border:1px solid var(--rule);padding:0 6px;height:38px;position:relative;z-index:40}
+.menubar .brand{font-family:var(--cond);font-weight:700;font-size:15px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--signal);padding:0 14px 0 8px}
+.mi{position:relative}
+.mi>button{background:none;border:0;color:var(--ink);font-family:var(--cond);font-weight:600;
+  font-size:13px;letter-spacing:.1em;text-transform:uppercase;padding:8px 12px;cursor:pointer}
+.mi>button:hover,.mi.open>button{background:var(--panel-2);color:var(--signal)}
+.mi>button:focus-visible{outline:1px solid var(--signal);outline-offset:-1px}
+.drop{display:none;position:absolute;top:100%;left:0;min-width:230px;background:var(--panel-2);
+  border:1px solid var(--rule);padding:4px;flex-direction:column;box-shadow:0 12px 30px #000a}
+.mi.open .drop{display:flex}
+.drop button{background:none;border:0;color:var(--ink);text-align:left;font-family:var(--body);
+  font-size:13px;padding:7px 10px;cursor:pointer;display:flex;justify-content:space-between;gap:16px}
+.drop button:hover{background:#141d29;color:var(--signal)}
+.drop button span{color:var(--faint);font-family:var(--mono);font-size:11px}
+.drop hr{border:0;border-top:1px solid var(--rule);margin:4px 0}
+.menubar .spacer{flex:1}
+.sess{display:flex;align-items:center;gap:8px;padding-right:8px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--good);
+  box-shadow:0 0 8px var(--good)}
+.dot.off{background:var(--faint);box-shadow:none}
+
+/* ---------- DSN strip ---------- */
+.dsn{background:#000;border:1px solid var(--rule);display:grid;
+  grid-template-columns:210px 1fr;min-height:150px}
+.dsn-id{padding:16px 18px;border-right:1px solid var(--rule);display:flex;
+  flex-direction:column;gap:6px;justify-content:center}
+.dsn-id .cx{font-family:var(--cond);font-weight:700;font-size:26px;letter-spacing:.05em;
+  text-transform:uppercase;line-height:1;color:#eaf2fa}
+.flagbar{display:flex;width:34px;height:20px;border:1px solid #2a3644;overflow:hidden}
+.flagbar i{flex:1}
+.dishes{display:flex;align-items:flex-end;justify-content:space-around;padding:6px 10px 0}
+.dish{position:relative;text-align:center;flex:1;max-width:150px}
+.dish svg{display:block;margin:0 auto;overflow:visible}
+.dish .id{font-family:var(--cond);font-weight:600;font-size:19px;letter-spacing:.06em;
+  color:var(--faint);margin-top:2px;border-top:1px solid var(--rule);padding-top:2px}
+.dish.active .id{color:var(--signal)}
+.dish .state{font-family:var(--cond);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  height:12px;color:var(--signal);opacity:0}
+.dish.active .state{opacity:1}
+.wire{fill:none;stroke:#41576e}
+.dishline{fill:none;stroke:#41576e;stroke-width:1}
+.dish.active .dishline{stroke:#9fd9f5}
+.dishfill{fill:#0d1a24}
+.dish.active .dishfill{fill:#12242f}
+.beam{fill:none;stroke:var(--signal);stroke-width:1.6;stroke-linecap:round;
+  stroke-dasharray:9 6;opacity:.85}
+.beam.b2{opacity:.4;stroke-width:1.2;stroke-dasharray:6 9}
+.dish.active .beam{animation:flow 1.1s linear infinite}
+.dish.tx .beam{stroke:var(--warn);animation:flowup .9s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-30}}
+@keyframes flowup{to{stroke-dashoffset:30}}
+@media (prefers-reduced-motion:reduce){.dish .beam{animation:none!important}}
+.dsn-foot{grid-column:1/-1;border-top:1px solid var(--rule);display:flex;gap:26px;
+  padding:7px 18px;background:var(--panel);flex-wrap:wrap}
+.kv{display:flex;align-items:baseline;gap:8px}
+.kv b{font-family:var(--mono);font-weight:500;font-size:13px;color:var(--ink)}
+
+/* ---------- working area ---------- */
+.grid{display:grid;grid-template-columns:264px minmax(0,1fr) 344px;gap:10px;align-items:start}
+@media (max-width:1120px){.grid{grid-template-columns:1fr}}
+.pane{background:var(--panel);border:1px solid var(--rule);display:flex;flex-direction:column;min-width:0}
+.pane>header{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:8px 12px;border-bottom:1px solid var(--rule);background:var(--panel-2)}
+.pane .body{padding:10px 12px;min-width:0}
+
+/* read-out */
+.rd{display:flex;flex-direction:column;gap:1px}
+.rd .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  padding:4px 0;border-bottom:1px solid #121a25}
+.rd .row:last-child{border-bottom:0}
+.rd .k{font-family:var(--cond);font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.rd .v{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.rd .row.gone .v{color:var(--crit);font-size:11px;letter-spacing:.1em}
+.rd .row.gone .k{color:var(--faint)}
+.rd .sub{font-family:var(--cond);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);padding:10px 0 3px;border-bottom:1px solid var(--rule);margin-bottom:4px}
+.locked{font-family:var(--body);font-size:12px;color:var(--faint);padding:6px 0;line-height:1.45}
+.locked b{color:var(--warn);font-weight:500}
+
+/* frame feed */
+.feed{font-family:var(--mono);font-size:11.5px;line-height:1.65;height:302px;overflow:auto;
+  padding:8px 12px;background:#060a0f;word-break:break-all}
+.feed div{color:#7e8fa3}
+.feed .fr{color:#7e8fa3}
+.feed .fr b{color:var(--signal);font-weight:500}
+.feed .fr.new{color:#dfe9f3}
+.feed .fr.new b{color:#bfe9ff}
+
+/* terminal */
+.term{font-family:var(--mono);font-size:12.5px;line-height:1.7;height:238px;overflow:auto;
+  padding:8px 12px;background:#060a0f}
+.term .cmd{color:var(--signal)}
+.term .ack{color:var(--good)}
+.term .nak{color:var(--crit)}
+.term .flight{color:var(--warn)}
+.prompt{display:flex;align-items:center;gap:8px;border-top:1px solid var(--rule);padding:8px 12px;
+  font-family:var(--mono);font-size:12.5px;background:var(--panel-2)}
+.prompt span{color:var(--signal)}
+.prompt input{flex:1;background:none;border:0;color:var(--ink);font:inherit;outline:none}
+.prompt input::placeholder{color:var(--faint)}
+
+/* objectives */
+.obj{border-bottom:1px solid var(--rule);padding:10px 12px}
+.obj:last-child{border-bottom:0}
+.obj .top{display:flex;gap:9px;align-items:baseline}
+.obj .mk{font-family:var(--mono);font-size:12px;width:13px;flex:none;color:var(--faint)}
+.obj .ti{font-family:var(--cond);font-weight:600;font-size:14.5px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--dim);flex:1}
+.obj .st{font-family:var(--cond);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.obj.active .ti{color:var(--ink)} .obj.active .mk{color:var(--signal)} .obj.active .st{color:var(--signal)}
+.obj.complete .ti{color:var(--good)} .obj.complete .mk{color:var(--good)} .obj.complete .st{color:var(--good)}
+.obj .brief{font-size:12.5px;color:var(--dim);margin:5px 0 0 22px;line-height:1.5}
+.note{margin:7px 0 0 22px;padding:6px 9px;font-size:12px;line-height:1.5;border-left:2px solid}
+.note.part{border-color:var(--warn);background:#1a150a;color:#e6d3a6}
+.note.hint{border-color:var(--faint);background:#0e141c;color:var(--dim)}
+.note .tag{font-family:var(--cond);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  display:block;margin-bottom:2px;color:var(--faint)}
+
+/* footer */
+.foot{display:flex;gap:22px;align-items:center;flex-wrap:wrap;background:var(--panel);
+  border:1px solid var(--rule);padding:8px 14px}
+.meter{display:flex;align-items:center;gap:8px}
+.bar{width:74px;height:5px;background:#141d29;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--signal)}
+.bar.warn i{background:var(--warn)}
+.transport{display:flex;gap:6px;margin-left:auto;align-items:center}
+.transport button{background:var(--panel-2);border:1px solid var(--rule);color:var(--ink);
+  font-family:var(--cond);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  padding:5px 12px;cursor:pointer}
+.transport button:hover{border-color:var(--signal);color:var(--signal)}
+.transport input[type=range]{width:150px;accent-color:var(--signal)}
+
+/* dialog */
+dialog{background:var(--panel);color:var(--ink);border:1px solid var(--rule);padding:0;
+  max-width:520px;box-shadow:0 20px 60px #000c}
+dialog::backdrop{background:#000b}
+dialog header{padding:12px 16px;border-bottom:1px solid var(--rule);background:var(--panel-2)}
+dialog .body{padding:14px 16px;font-size:13.5px;line-height:1.6}
+dialog .body code{font-family:var(--mono);font-size:12px;color:var(--signal)}
+dialog footer{padding:10px 16px;border-top:1px solid var(--rule);display:flex;justify-content:flex-end;gap:8px}
+dialog button{background:var(--panel-2);border:1px solid var(--rule);color:var(--ink);
+  font-family:var(--cond);font-weight:600;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding:6px 14px;cursor:pointer}
+dialog button.pri{border-color:var(--signal);color:var(--signal)}
+.reqtag{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:10px;display:block}
+.banner{background:#0d141d;border:1px solid var(--rule);border-left:3px solid var(--signal);
+  padding:9px 14px;font-size:12.5px;color:var(--dim);line-height:1.5}
+.banner b{color:var(--ink);font-weight:500}
+</style>
+
+<div class="shell">
+
+  <div class="banner"><b>Console mockup — not a running platform.</b> Every telemetry frame, command reply and objective transition below was captured from the reference probe under QEMU playing <code style="font-family:var(--mono);color:var(--signal)">sojourn.comms.triage</code>. Objective states are computed from those frames, not scripted. Menu actions describe the requirement they satisfy.</div>
+
+  <!-- ================= menu ================= -->
+  <div class="menubar">
+    <div class="brand">Sojourn</div>
+    <div class="mi" id="mi-file">
+      <button aria-haspopup="true">File</button>
+      <div class="drop">
+        <button data-dlg="load">Load session…<span>R26.5</span></button>
+        <button data-dlg="save">Save session…<span>R26.4</span></button>
+        <hr>
+        <button data-dlg="exit">Exit<span>R26.6</span></button>
+      </div>
+    </div>
+    <div class="mi" id="mi-sess">
+      <button aria-haspopup="true">Session</button>
+      <div class="drop">
+        <button data-dlg="start">Start scenario…<span>R26.2</span></button>
+        <button data-dlg="abort">Abort running scenario<span>R26.3</span></button>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="sess">
+      <span class="dot" id="runDot"></span>
+      <span class="lbl" id="runTxt">Running · Bandwidth · rev 1</span>
+    </div>
+  </div>
+
+  <!-- ================= DSN strip ================= -->
+  <div class="dsn">
+    <div class="dsn-id">
+      <div class="flagbar"><i style="background:#b22234"></i><i style="background:#fff"></i><i style="background:#3c3b6e"></i></div>
+      <div class="cx" id="cxName">Goldstone</div>
+      <div class="lbl" id="cxSub">DSS-25 · 34 m · X-band</div>
+      <div class="lbl num" id="cxClock" style="color:var(--faint)">MET 00:00:05</div>
+    </div>
+    <div class="dishes" id="dishes"></div>
+    <div class="dsn-foot">
+      <div class="kv"><span class="lbl">One-way</span><b id="owlt">00:00:08</b></div>
+      <div class="kv"><span class="lbl">Spacecraft ant</span><b id="scAnt">HGA</b></div>
+      <div class="kv"><span class="lbl">Dish deploy</span><b id="scDep">100%</b></div>
+      <div class="kv"><span class="lbl">Link</span><b id="linkState" style="color:var(--good)">UP</b></div>
+      <div class="kv"><span class="lbl">Budget</span><b id="linkBw">100 B / frame</b></div>
+      <div class="kv"><span class="lbl">Dropped</span><b id="linkDrop">0</b></div>
+    </div>
+  </div>
+
+  <!-- ================= working area ================= -->
+  <div class="grid">
+
+    <div class="pane">
+      <header><span class="lbl">Read-out</span><span class="lbl num" id="rdFrame">F001</span></header>
+      <div class="body rd" id="readout"></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+      <div class="pane">
+        <header><span class="lbl">Downlink · raw frames</span><span class="lbl">CRC verified</span></header>
+        <div class="feed" id="feed"></div>
+      </div>
+      <div class="pane">
+        <header><span class="lbl">Uplink terminal</span><span class="lbl" id="inflight">—</span></header>
+        <div class="term" id="term"></div>
+        <div class="prompt"><span>uplink&gt;</span><input id="cmdin" placeholder="PEEK 0x2001E200 16" autocomplete="off"></div>
+      </div>
+    </div>
+
+    <div class="pane">
+      <header><span class="lbl">Mission status</span><span class="lbl" id="objScore">0 / 75</span></header>
+      <div id="objs"></div>
+    </div>
+  </div>
+
+  <!-- ================= footer ================= -->
+  <div class="foot">
+    <div class="meter"><span class="lbl">Writes</span><div class="bar"><i id="bw" style="width:100%"></i></div><span class="num" id="bwT">40 / 40</span></div>
+    <div class="meter"><span class="lbl">Reads</span><div class="bar"><i id="br" style="width:100%"></i></div><span class="num" id="brT">2000 / 2000</span></div>
+    <div class="meter"><span class="lbl">Frame</span><span class="num" id="fCount">1 / 17</span></div>
+    <div class="transport">
+      <button id="btnPlay">Pause</button>
+      <button id="btnStep">Step</button>
+      <input type="range" id="scrub" min="1" max="17" value="1">
+    </div>
+  </div>
+</div>
+
+<dialog id="dlg">
+  <header><span class="lbl" id="dlgTitle">Action</span></header>
+  <div class="body" id="dlgBody"></div>
+  <footer id="dlgFoot"></footer>
+</dialog>
+
+<script>
+const DATA = {"frames":[{"n":1,"raw":"EB90470000000000050100000CE6073F6106000000640364600800001F400010000000040000001501040000000E02040000010A030400000CE60404000000010504000023695A020000338B","up":5,"mode":"NOMINAL","bus":3302,"load":1855,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"HGA","dropped":0,"budget":100,"xstat":3,"flags":"LINK,HGA_DEPLOYED","hga_deploy_pct":100},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":16,"rec_fill_pct":0,"auth":0},"MAG":21,"IMU":14,"THM":266,"PWR":3302,"RAD":1,"STR":9065,"AUX":"0x0000"},"ev":[]},{"n":2,"raw":"EB904700010000000A0100000CE7073F6106000000640364600800001F400024000000040000003A01040000000202040000010A030400000CE704040000000805040000236D5A020000B21B","up":10,"mode":"NOMINAL","bus":3303,"load":1855,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"HGA","dropped":0,"budget":100,"xstat":3,"flags":"LINK,HGA_DEPLOYED","hga_deploy_pct":100},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":36,"rec_fill_pct":0,"auth":0},"MAG":58,"IMU":2,"THM":266,"PWR":3303,"RAD":8,"STR":9069,"AUX":"0x0000"},"ev":[]},{"n":3,"raw":"EB904700020000000F0100000CE5073F6106000000640364600800001F4000380000000400000059010400000014020400000108030400000CE504040000000A0504000023705A02B3BAF933","up":15,"mode":"NOMINAL","bus":3301,"load":1855,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"HGA","dropped":0,"budget":100,"xstat":3,"flags":"LINK,HGA_DEPLOYED","hga_deploy_pct":100},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":56,"rec_fill_pct":0,"auth":0},"MAG":89,"IMU":20,"THM":264,"PWR":3301,"RAD":10,"STR":9072,"AUX":"0xB3BA"},"ev":[]},{"n":4,"raw":"EB90250003000000140100000CE3068B6106010600281128600800001F40004C000000040000008E481E","up":20,"mode":"NOMINAL","bus":3299,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":6,"budget":40,"xstat":17,"flags":"LINK,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":76,"rec_fill_pct":0,"auth":0},"MAG":142},"ev":["channel IMU LOST","channel THM LOST","channel PWR LOST","channel RAD LOST","channel STR LOST","ANTENNA HGA -> LGA (budget 100 -> 40 bytes)","DOWNLINK SATURATED: 6 channels dropped","HGA deployment 100% -> 40%"]},{"n":5,"raw":"EB90250004000000190100000CE1068B6106010600281528600800001F40006000000004000000AD8C52","up":25,"mode":"NOMINAL","bus":3297,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":6,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":96,"rec_fill_pct":0,"auth":0},"MAG":173},"ev":["HIGH GAIN ANTENNA JAMMED at 40% deployment"]},{"n":6,"raw":"EB902500050000001E0100000CE1068B6106010600281528600800001F40007400000004000000BB8606","up":30,"mode":"NOMINAL","bus":3297,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":6,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":116,"rec_fill_pct":0,"auth":0},"MAG":187},"ev":[]},{"n":7,"raw":"EB90250006000000230100000CE1068B6106010600281528600800001F40008800000004000000D32A71","up":35,"mode":"NOMINAL","bus":3297,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":6,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":136,"rec_fill_pct":0,"auth":0},"MAG":211},"ev":[]},{"n":8,"raw":"EB90250007000000280100000CE7068B6106010600281528600800001F40009C00000004000000F937E5","up":40,"mode":"NOMINAL","bus":3303,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":6,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":156,"rec_fill_pct":0,"auth":0},"MAG":249},"ev":[]},{"n":9,"raw":"EB902500080000002D0100000CE3068B6106010600281528600800001F4000B000000004000001018526","up":45,"mode":"NOMINAL","bus":3299,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":6,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":176,"rec_fill_pct":0,"auth":0},"MAG":257},"ev":[]},{"n":10,"raw":"EB90250009000000320100000CE7068B6106010600281528600800001F4000C400000004000001170C78","up":50,"mode":"NOMINAL","bus":3303,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":6,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":196,"rec_fill_pct":0,"auth":0},"MAG":279},"ev":[]},{"n":11,"raw":"EB9025000A000000370100000CE4068B6106010600281528600800001F4000D8000004040000002870AC","up":55,"mode":"NOMINAL","bus":3300,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":6,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":216,"rec_fill_pct":0,"auth":0},"RAD":40},"ev":["channel MAG LOST","channel RAD ACQUIRED"]},{"n":12,"raw":"EB9025000B0000003C0100000CE3068B6106010700281528600800001F4000EC00000404000000354CE0","up":60,"mode":"NOMINAL","bus":3299,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":7,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":236,"rec_fill_pct":0,"auth":0},"RAD":53},"ev":["dropped channels 6 -> 7"]},{"n":13,"raw":"EB9025000C000000410100000CE2068B6106010700281528600800001F4001000000040400000038733A","up":65,"mode":"NOMINAL","bus":3298,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":7,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":256,"rec_fill_pct":0,"auth":0},"RAD":56},"ev":[]},{"n":14,"raw":"EB9025000D000000460100000CE1068B6106010700281528600800001F400114000004040000003B0450","up":70,"mode":"NOMINAL","bus":3297,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":7,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":276,"rec_fill_pct":0,"auth":0},"RAD":59},"ev":[]},{"n":15,"raw":"EB9025000E0000004B0100000CE2068B6106010700281528600800001F400128000004040000003F87A2","up":75,"mode":"NOMINAL","bus":3298,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":7,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":296,"rec_fill_pct":0,"auth":0},"RAD":63},"ev":[]},{"n":16,"raw":"EB9025000F000000500100000CE1068B6106010700281528600800001F40013C000004040000004454D9","up":80,"mode":"NOMINAL","bus":3297,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":7,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":316,"rec_fill_pct":0,"auth":0},"RAD":68},"ev":[]},{"n":17,"raw":"EB90250010000000550100000CE2068B6106010700281528600800001F40015000000404000000470AE6","up":85,"mode":"NOMINAL","bus":3298,"load":1675,"reboots":0,"fault":"-","ch":{"COMMS":{"antenna":"LGA","dropped":7,"budget":40,"xstat":21,"flags":"LINK,HGA_JAM,ON_LGA","hga_deploy_pct":40},"HK":{"heater_on":0,"shed_count":0,"propellant_mg":8000,"momentum":336,"rec_fill_pct":0,"auth":0},"RAD":71},"ev":[]}],"commands":[{"frame":2,"text":"PEEK 0x2001E200 16","reply":"ACK PEEK 01000000030000000000000064000000"},{"frame":3,"text":"POKE 0x2001E20C 28","reply":"ACK POKE 1"},{"frame":4,"text":"POKE 0x2001E204 04","reply":"ACK POKE 1"},{"frame":7,"text":"POKE 0x2001E200 09","reply":"ACK POKE 1"},{"frame":10,"text":"POKE 0x2001943A 04","reply":"ACK POKE 1"},{"frame":11,"text":"POKE 0x2001943E 00","reply":"ACK POKE 1"}]};
+
+/* ---------- what this scenario lets the console decode (manifest console.decode) ---------- */
+const DECODE = ["MAG","IMU","THM","PWR","RAD","STR","HK","COMMS"];
+const UNITS = {MAG:["Magnetometer","nT",1],IMU:["Inertial","°/s",100],THM:["Thermal","°C",10],
+               PWR:["Bus monitor","mV",1],RAD:["Radiation","ct",1],STR:["Star tracker","q",10000]};
+
+/* ---------- DSN complexes: derived from probe uptime, never the wall clock ---------- */
+const COMPLEX = [
+  {name:"Goldstone", dishes:[14,23,24,25,26], flag:["#b22234","#fff","#3c3b6e"]},
+  {name:"Madrid",    dishes:[53,54,55,63,65], flag:["#aa151b","#f1bf00","#aa151b"]},
+  {name:"Canberra",  dishes:[33,34,35,36,43], flag:["#00247d","#fff","#00247d"]}
+];
+const complexFor = up => COMPLEX[Math.floor(up/28800) % COMPLEX.length];
+
+/* ---------- objective model: evaluated from the captured frames ---------- */
+const OBJS = [
+  {id:"diagnose", title:"Diagnose the downlink", pts:10,
+   brief:"Establish that the probe has fallen back to the low-gain antenna, and that the high-gain dish is no longer fully deployed.",
+   ok:s => s.ant==="LGA" && s.dep<95 && s.peeked,
+   hints:[[4,"Channel 0x61 carries the link state. Manual section 5.5 gives its layout."]]},
+  {id:"redeploy", title:"Attempt to redeploy the dish", pts:10,
+   brief:"Command the deployment drive and establish, for the record, whether the mechanism can be recovered.",
+   ok:s => s.deployCmd && s.depLow>=2,
+   partial:[[s=>!s.deployCmd,"Nothing has been written to the comms control register yet. The deployment drive has to be commanded before its behavior can be recorded."]],
+   hints:[[6,"The comms control register has a bit for the deployment drive. Manual section 6.5."],
+          [18,"Watch the deployment percentage across several frames after you command it. Where does it stop, and why there?"]]},
+  {id:"restore", title:"Restore the radiation counter", pts:40,
+   brief:"Get channel 0x04 back into the downlink and keep it there. The frame has room for exactly one science channel; make it the right one.",
+   ok:s => s.radRun>=3,
+   partial:[[s=>!s.rad && s.prioTouched,"The priority table has been modified but the radiation counter still is not surviving the squeeze. Check what you displaced: if you overwrote an entry rather than exchanging two, a channel has been lost from the table entirely."],
+            [s=>!s.rad,"The radiation counter is still being squeezed out. The flight software emits channels in a fixed order until the budget runs out."]],
+   hints:[[8,"The flight software emits channels in a fixed order until the budget runs out. That order is a table in working memory, not in the program image."],
+          [25,"The table is a byte per channel, using the same channel IDs the downlink uses. Exchange two entries rather than overwriting one."]]},
+  {id:"budget", title:"Keep the uplink budget", pts:15,
+   brief:"Complete the repair inside the allowance. Sojourn's transmitter is old and every uplink costs a station pass.",
+   ok:s => s.done.has("restore") && s.writes<=40,
+   hints:[[30,"Reads are metered separately from writes. Survey as much as you like; it is the writes that are scarce."]]}
+];
+
+/* ---------- dish drawing ---------- */
+function dishSVG(active,tx){
+  const beam = active ? `
+      <path class="beam" d="M64 32 q-9 -10 0 -20 q9 -10 0 -20 q-9 -10 0 -18"/>
+      <path class="beam b2" d="M72 34 q-8 -11 1 -21 q9 -10 0 -20 q-8 -9 1 -17"/>` : "";
+  return `<svg width="128" height="118" viewBox="0 -8 128 118" aria-hidden="true">
+    ${beam}
+    <g transform="translate(64 62)">
+      <ellipse class="dishfill" cx="0" cy="0" rx="34" ry="13"/>
+      <ellipse class="dishline" cx="0" cy="0" rx="34" ry="13"/>
+      <ellipse class="dishline" cx="0" cy="0" rx="23" ry="8.5" opacity=".75"/>
+      <ellipse class="dishline" cx="0" cy="0" rx="12" ry="4.5" opacity=".55"/>
+      <path class="dishline" d="M-34 0 H34 M0 -13 V13 M-24 -9 L24 9 M-24 9 L24 -9" opacity=".45"/>
+      <path class="dishline" d="M-19 -8 L0 -30 L19 -8"/>
+      <path class="dishline" d="M0 -30 L0 -22"/>
+      <path class="dishline" d="M-9 6 L-13 26 M9 6 L13 26 M0 8 V26"/>
+      <path class="dishline" d="M-15 26 H15 M-11 32 H11"/>
+      <path class="dishline" d="M-13 26 L13 32 M13 26 L-13 32" opacity=".5"/>
+      <rect class="dishline" x="-9" y="32" width="18" height="7" fill="none"/>
+    </g></svg>`;
+}
+
+/* ---------- state ---------- */
+let idx = 0, playing = true, timer = null;
+const feedEl=document.getElementById("feed"), termEl=document.getElementById("term");
+
+function cmdsUpTo(n){ return DATA.commands.filter(c => c.frame <= n); }
+
+function derive(n){
+  const f = DATA.frames[n-1], cm = f.ch.COMMS || {};
+  const cs = cmdsUpTo(n);
+  let radRun = 0;
+  for (let i = n; i >= 1; i--){ if (DATA.frames[i-1].ch.RAD !== undefined) radRun++; else break; }
+  let depLow = 0;
+  for (let i = n; i >= 1; i--){ const c = DATA.frames[i-1].ch.COMMS;
+    if (c && c.hga_deploy_pct < 95) depLow++; else break; }
+  return {
+    f, ant: cm.antenna, dep: cm.hga_deploy_pct, drop: cm.dropped, budget: cm.budget,
+    flags: cm.flags || "-", rad: f.ch.RAD !== undefined, radRun, depLow,
+    peeked: cs.some(c => c.text.startsWith("PEEK") && (c.reply||"").startsWith("ACK")),
+    deployCmd: cs.some(c => /^POKE 0x2001E200 09/.test(c.text)),
+    prioTouched: cs.some(c => /^POKE 0x2001943/.test(c.text)),
+    writes: cs.filter(c => c.text.startsWith("POKE")).length,
+    reads: cs.filter(c => c.text.startsWith("PEEK")).length,
+    done: new Set()
+  };
+}
+
+/* objective states are latched, so walk from frame 1 every time */
+function objectiveStates(n){
+  const st = {}, first = {}, active = {};
+  OBJS.forEach(o => st[o.id] = "locked");
+  for (let k = 1; k <= n; k++){
+    const s = derive(k);
+    s.done = new Set(OBJS.filter(o => st[o.id] === "complete").map(o => o.id));
+    OBJS.forEach((o, i) => {
+      if (st[o.id] === "complete") return;
+      const prev = i === 0 ? true : st[OBJS[i-1].id] === "complete";
+      if (st[o.id] === "locked" && prev) { st[o.id] = "active"; active[o.id] = k; }
+      if (st[o.id] === "active" && o.ok(s)) { st[o.id] = "complete"; first[o.id] = k; }
+    });
+  }
+  return {st, first, active};
+}
+
+function render(){
+  const n = idx + 1, s = derive(n), f = s.f;
+  const {st, first, active} = objectiveStates(n);
+
+  /* --- DSN --- */
+  const cx = complexFor(f.up);
+  document.getElementById("cxName").textContent = cx.name;
+  document.querySelectorAll(".flagbar i").forEach((el,i)=> el.style.background = cx.flag[i]);
+  const hh = String(Math.floor(f.up/3600)).padStart(2,"0"),
+        mm = String(Math.floor(f.up/60)%60).padStart(2,"0"),
+        ss = String(f.up%60).padStart(2,"0");
+  document.getElementById("cxClock").textContent = `MET ${hh}:${mm}:${ss}`;
+  /* the antenna carrying the link: bigger aperture on the high gain */
+  const actIdx = s.ant === "HGA" ? 0 : 3;
+  document.getElementById("cxSub").textContent =
+      `DSS-${cx.dishes[actIdx]} · ${s.ant === "HGA" ? "70 m" : "34 m"} · X-band`;
+  const tx = DATA.commands.some(c => c.frame === n);
+  document.getElementById("dishes").innerHTML = cx.dishes.map((d,i)=>{
+    const on = i === actIdx;
+    return `<div class="dish ${on?"active":""} ${on&&tx?"tx":""}">
+      ${dishSVG(on,tx)}<div class="state">${tx?"transmit":"receive"}</div>
+      <div class="id">${d}</div></div>`;
+  }).join("");
+  document.getElementById("scAnt").textContent = s.ant;
+  document.getElementById("scAnt").style.color = s.ant === "HGA" ? "var(--good)" : "var(--warn)";
+  document.getElementById("scDep").textContent = s.dep + "%";
+  document.getElementById("scDep").style.color = s.dep < 95 ? "var(--crit)" : "var(--ink)";
+  document.getElementById("linkBw").textContent = s.budget + " B / frame";
+  document.getElementById("linkDrop").textContent = s.drop;
+  document.getElementById("linkDrop").style.color = s.drop ? "var(--crit)" : "var(--ink)";
+
+  /* --- read-out: only channels the package permits --- */
+  const rows = [];
+  rows.push(`<div class="sub">Frame header</div>`);
+  rows.push(rw("Mode", f.mode), rw("Uptime", f.up + " s"), rw("Bus", (f.bus/1000).toFixed(3) + " V"),
+            rw("Load", f.load + " mW"), rw("Reboots", f.reboots), rw("Last fault", f.fault));
+  rows.push(`<div class="sub">Instruments</div>`);
+  for (const k of ["MAG","IMU","THM","PWR","RAD","STR"]){
+    const [nm,u,sc] = UNITS[k];
+    rows.push(f.ch[k] === undefined ? rw(nm, "absent", true)
+                                    : rw(nm, (f.ch[k]/sc).toFixed(sc>1?2:0) + " " + u));
+  }
+  const hk = f.ch.HK;
+  if (hk){
+    rows.push(`<div class="sub">Housekeeping</div>`);
+    rows.push(rw("Heater", hk.heater_on ? "on" : "off"), rw("Propellant", hk.propellant_mg + " mg"),
+              rw("Momentum", hk.momentum), rw("Recorder", hk.rec_fill_pct + " %"),
+              rw("Shed events", hk.shed_count));
+  }
+  rows.push(`<div class="sub">Not decoded</div>`,
+    `<div class="locked">Channel <b>0x5A</b> is present in every frame and appears in no recovered
+     documentation, so this console has no decoder for it. It is in the raw feed.</div>`);
+  document.getElementById("readout").innerHTML = rows.join("");
+  document.getElementById("rdFrame").textContent = "F" + String(n).padStart(3,"0");
+
+  /* --- raw feed --- */
+  feedEl.innerHTML = DATA.frames.slice(0, n).map((x,i)=>
+    `<div class="fr ${i===n-1?"new":""}"><b>${String(i+1).padStart(3,"0")}</b> ${x.raw.toUpperCase()}</div>`).join("");
+  feedEl.scrollTop = feedEl.scrollHeight;
+
+  /* --- terminal --- */
+  const lines = [];
+  DATA.frames.slice(0, n).forEach((x,i) => {
+    (x.ev||[]).forEach(e => lines.push(`<div style="color:var(--dim)">! ${e}</div>`));
+    DATA.commands.filter(c => c.frame === i+1).forEach(c => {
+      lines.push(`<div class="cmd">uplink&gt; ${c.text}</div>`);
+      const r = c.reply || "";
+      lines.push(`<div class="${r.startsWith("ACK")?"ack":"nak"}">${r}</div>`);
+    });
+  });
+  termEl.innerHTML = lines.join("") || `<div style="color:var(--faint)">awaiting first uplink…</div>`;
+  termEl.scrollTop = termEl.scrollHeight;
+  document.getElementById("inflight").textContent = tx ? "1 in flight · 8 s" : "—";
+
+  /* --- objectives --- */
+  let score = 0;
+  document.getElementById("objs").innerHTML = OBJS.map(o => {
+    const state = st[o.id];
+    if (state === "complete") score += o.pts;
+    const mk = state === "complete" ? "✓" : state === "active" ? "▸" : "·";
+    let extra = "";
+    if (state === "active"){
+      const p = (o.partial || []).find(([t]) => t(s));
+      if (p) extra += `<div class="note part"><span class="tag">Diagnostic</span>${p[1]}</div>`;
+      const age = n - (active[o.id] || n) + 1;
+      (o.hints || []).filter(([af]) => age >= af).forEach(([af,t]) =>
+        extra += `<div class="note hint"><span class="tag">Hint · after ${af} frames</span>${t}</div>`);
+    }
+    const showBrief = state !== "locked";
+    return `<div class="obj ${state}">
+      <div class="top"><span class="mk">${mk}</span><span class="ti">${o.title}</span>
+      <span class="st">${state}${first[o.id]?" · F"+first[o.id]:""}</span></div>
+      ${showBrief?`<div class="brief">${o.brief}</div>`:""}${extra}</div>`;
+  }).join("");
+  document.getElementById("objScore").textContent = score + " / 75";
+
+  /* --- footer --- */
+  const wLeft = 40 - s.writes, rLeft = 2000 - s.reads;
+  document.getElementById("bw").style.width = (wLeft/40*100) + "%";
+  document.getElementById("bwT").textContent = wLeft + " / 40";
+  document.getElementById("br").style.width = (rLeft/2000*100) + "%";
+  document.getElementById("brT").textContent = rLeft + " / 2000";
+  document.getElementById("fCount").textContent = n + " / " + DATA.frames.length;
+  document.getElementById("scrub").value = n;
+}
+const rw = (k,v,gone) => `<div class="row ${gone?"gone":""}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+
+/* ---------- transport ---------- */
+function tick(){ idx = (idx + 1) % DATA.frames.length; render(); }
+function play(on){
+  playing = on; clearInterval(timer);
+  if (on) timer = setInterval(tick, 1700);
+  document.getElementById("btnPlay").textContent = on ? "Pause" : "Play";
+}
+document.getElementById("btnPlay").onclick = () => play(!playing);
+document.getElementById("btnStep").onclick = () => { play(false); tick(); };
+document.getElementById("scrub").oninput = e => { play(false); idx = +e.target.value - 1; render(); };
+document.getElementById("cmdin").addEventListener("keydown", e => {
+  if (e.key === "Enter") { openDlg("typed"); e.target.value = ""; }
+});
+
+/* ---------- menus ---------- */
+document.querySelectorAll(".mi>button").forEach(b => b.onclick = e => {
+  const mi = b.parentElement, was = mi.classList.contains("open");
+  document.querySelectorAll(".mi").forEach(m => m.classList.remove("open"));
+  if (!was) mi.classList.add("open");
+  e.stopPropagation();
+});
+document.addEventListener("click", () => document.querySelectorAll(".mi").forEach(m => m.classList.remove("open")));
+document.querySelectorAll(".drop button").forEach(b => b.onclick = () => openDlg(b.dataset.dlg));
+
+const DLG = {
+  load:["Load session","Restores a session by <b>replaying its command log</b> against a fresh probe — there is no memory snapshot. Refuses an archive whose scenario is not installed, and warns when the installed revision is higher than the archive's, because changed assertions may legitimately reach a different verdict.","R26.5 · R15.1"],
+  save:["Save session","Writes a portable archive: the command log, the scenario identifier and revision, and the player profile. Does not require the scenario to be stopped — progress is already durable, and this is an export rather than a commit.","R26.4"],
+  exit:["Exit","Terminates the probe process, flushes the command log, and leaves no orphaned emulator. The orphan is the failure that matters: a QEMU process still holding its ports makes the next start fail with an error that looks nothing like its cause.","R26.6"],
+  start:["Start scenario","A scenario is already running. Starting another aborts it first — the command log is preserved and the aborted session stays resumable.","R26.2 · R26.3"],
+  abort:["Abort running scenario","Kills the probe and releases its ports within 10 s. The command log is kept in full and the session remains resumable. Aborting is a normal action, not a failure path.","R26.3"],
+  typed:["Uplink disabled in the mockup","This is a captured session, so the terminal replays real commands rather than accepting new ones. In the platform the command would be checked for syntax, charged against the write allowance, queued for the transmission delay, then written to the probe and appended to the command log.","R25.5 · R25.6"]
+};
+const dlg = document.getElementById("dlg");
+function openDlg(k){
+  const [t, b, r] = DLG[k];
+  document.getElementById("dlgTitle").textContent = t;
+  document.getElementById("dlgBody").innerHTML = b + `<span class="reqtag">${r}</span>`;
+  document.getElementById("dlgFoot").innerHTML =
+    (k === "start" || k === "abort" || k === "exit")
+      ? `<button onclick="dlg.close()">Cancel</button><button class="pri" onclick="dlg.close()">Confirm</button>`
+      : `<button class="pri" onclick="dlg.close()">Close</button>`;
+  dlg.showModal();
+}
+
+render(); play(true);
+</script>

@@ -177,7 +177,7 @@ Budget being *derived* rather than stored matters: two sources of truth for a co
 
 ## 8. The Console
 
-Diegetic — a mission-control console, not a quiz app. Five panels:
+Diegetic — a mission-control console, not a quiz app. Panels:
 
 | Panel | Content |
 |---|---|
@@ -186,6 +186,8 @@ Diegetic — a mission-control console, not a quiz app. Five panels:
 | **Mission status** | The objective list. See below. |
 | **Event ticker** | ACK/NAK, reboots, mode changes. |
 | **Budget** | Writes and reads remaining, as a resource, not a score. |
+| **Link status** | The DSN complex and antenna in contact, signal activity, one-way delay. §8.2. |
+| **Menu** | Start, abort, save, load, exit. §8.3. |
 
 ### 8.1 The objective panel
 
@@ -225,7 +227,65 @@ Two things the console must not do: re-order objectives (declaration order is au
 
 **`hints` are console-only.** No evaluator reads them; the reference evaluator ignores them entirely. That means nothing has exercised the hint contract, so it is worth building this panel early and against the real packages.
 
-### 8.2 API sketch
+### 8.2 The link panel
+
+The panel modelled on NASA's DSN Now display. It is the piece that makes the delay felt rather than merely counted, so it is worth building properly.
+
+```
+  ┌────────────────────────────────────────────────────────────────────┐
+  │ ▓▓ GOLDSTONE        DSS-25   34 m   X-band                         │
+  │                                                                    │
+  │      ╱▔▔╲        ╱▔▔╲        ╱▔▔╲        ╱▔▔╲        ╱▔▔╲          │
+  │     ╱ 14 ╲      ╱ 23 ╲      ╱ 24 ╲      ╱▁25▁╲~~~~~ ╱ 26 ╲         │
+  │                                          RECEIVING                 │
+  │                                                                    │
+  │  ONE-WAY  00:00:08     SPACECRAFT ANT  HGA      LINK  UP           │
+  └────────────────────────────────────────────────────────────────────┘
+```
+
+**What drives it.** Everything on this panel is derived; none of it is decoration.
+
+| Element | Source |
+|---|---|
+| Complex in contact | Probe uptime, unless the package pins one (R25.9) |
+| Antenna carrying the link | The complex's dish list; aperture reflects the spacecraft antenna in use |
+| Inbound animation | A downlink frame arriving |
+| Outbound animation | An uplink in flight, for the duration of its delay |
+| One-way delay | `link.downlink_delay_s` |
+| Spacecraft antenna | The `COMMS` channel's antenna field, when the scenario decodes it |
+| Link lost | No frame for more than two telemetry periods |
+
+**Derive the complex from probe uptime, not the wall clock.** Earth turns, so each complex holds a deep-space target for roughly eight hours; rotating on that period gives a handover the player will actually notice across a long session. Using probe uptime rather than the host clock means a replayed session shows the same station sequence as the original, which is R25.9 and is the same determinism argument as everywhere else. The panel is display-only today, so a wall clock would not corrupt grading — but the moment someone adds pass windows that gate the uplink, it would, and by then the code is written.
+
+**Do not fake activity.** A dish animating when nothing is being received teaches the player to ignore the panel. If the link is down, show it down.
+
+**A note on scope.** Real station pass windows — the probe reachable only when a complex has it in view, uplinks queuing until the next pass — are a genuinely good mechanic and are **not in scope**. If they are added later they become objective-relevant, and the determinism rule above is what will make that possible without a rewrite.
+
+### 8.3 Session lifecycle
+
+```
+   ┌──────┐  start ┌─────────┐  abort  ┌─────────┐
+   │ idle │───────►│ running │────────►│ stopped │
+   └──────┘        └─────────┘         └─────────┘
+       ▲                │  save             │
+       │                ▼                   │ resume
+       │           (archive)                │
+       └───────────── exit ◄────────────────┘
+```
+
+| Action | What it does | What it must not do |
+|---|---|---|
+| **Start** | Boot a probe from the package ROM, apply setup, begin the loop | Start a second probe. Starting while running requires confirmation and aborts the first (R26.2) |
+| **Abort** | Kill the emulator, release ports, keep the log | Delete the log, or lose objective state — both are recovered by replay |
+| **Save** | Write a portable archive: log, scenario id and revision, profile | Require stopping first, or snapshot emulator memory |
+| **Load** | Restore by replay | Load an archive for a scenario that is not installed |
+| **Exit** | Kill the emulator, flush the log, leave no orphan process | Leave a QEMU process holding a port — this is the one users will actually hit |
+
+**Aborting is not a failure path, it is a normal one.** Players will start a scenario, realise they want to begin again, and expect that to be instant and clean. Make it a first-class action with a confirmation, not an error case.
+
+**The orphaned emulator is the bug you will ship.** A probe launched as a child process and not reaped on exit holds its TCP ports, and the next start fails with an error that looks nothing like its cause. Make the supervisor own process lifetime from the beginning, kill on every exit path including exceptions, and verify with process inspection — which is why R26.6 is written to be checked that way.
+
+### 8.4 API sketch
 
 ```
 GET  /api/scenarios                 -> list from the content directory

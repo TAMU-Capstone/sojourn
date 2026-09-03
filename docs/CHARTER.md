@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Document** | Project Charter and Requirements Specification |
-| **Version** | 0.5 (Draft — QEMU named as the emulation target and Renode deferred with the harness tier; emulation risk downgraded. v0.4 captured the specifications' normative content as requirements; §6.8–§6.10 added; R2.2, R3.1, R3.2, R21, R22.1 amended) |
+| **Version** | 0.6 (Draft — §6.11 ground-station console and session lifecycle requirements added; scenario-controlled telemetry decoding. v0.5 named QEMU as the emulation target and deferred Renode; emulation risk downgraded. v0.4 captured the specifications' normative content as requirements; §6.8–§6.10 added; R2.2, R3.1, R3.2, R21, R22.1 amended) |
 | **Date** | September 3, 2026 |
 | **Sponsor** | Trevor Bakker (Instructor) |
 | **Team** | 5–6 Computer Science students, one semester |
@@ -245,6 +245,46 @@ Automated verification is concentrated in three suites, and a requirement marked
 Requirements verified by inspection, analysis or demonstration are settled at the design review (§10) rather than in CI, and are listed in the acceptance script.
 
 > **Requirements that changed at v0.4, and why.** R2.2 omitted the command log, which the assertion vocabulary reads through its `commanded` and `budget` predicates. R3.1 named three objective states where the format defines four, and treated "partial" as a state when it is diagnostic text attached to an active objective. R3.2 conflated that diagnostic text with the timed hint ladder, which are separately authored and separately revealed; R3.4 now covers hints. R21 listed four deliverable documents before four specifications existed. R22.1 required a UTC timestamp in each command-log entry — but replay schedules commands by **probe uptime**, and a wall-clock stamp used for that purpose reproduces a different session on a faster machine, which is precisely the defect the requirement was meant to prevent.
+
+
+### 6.11 Ground-Station Console
+
+The console is the whole of the player's contact with the mission. §6.1 already governs feedback timing; this section governs what is on screen, and what the player can do to a running session.
+
+**Layout and panels**
+
+| ID | Pri | Requirement | Verify |
+|---|---|---|---|
+| R25.1 | T | The console SHALL present five regions simultaneously and without navigation: spacecraft read-out, downlink frame feed, uplink terminal, mission status, and ground-station link status. | D |
+| R25.2 | T | The downlink feed SHALL display every received frame as transmitted, in hexadecimal, in arrival order, retaining at least the most recent 200 frames, and SHALL mark any frame failing CRC as corrupt without discarding it. | D |
+| R25.3 | T | The spacecraft read-out SHALL present decoded values **only** for channels the active scenario package lists in `console.decode`; every other channel SHALL appear in the downlink feed as raw hexadecimal only. | T |
+| R25.4 | T | When a decoded channel leaves the downlink, the read-out SHALL mark it absent within one telemetry period and SHALL NOT continue to display its last value. | T |
+| R25.5 | T | The uplink terminal SHALL accept typed commands, maintain a recallable history of at least the most recent 500 commands per player across sessions, and display for each command in flight its remaining transmission delay to a resolution of 1 s. | D |
+| R25.6 | T | The console SHALL display remaining write and read allowance whenever the active scenario declares a budget, and SHALL indicate a command refused for budget distinctly from a command the probe rejected. | D |
+| R25.7 | T | The mission status panel SHALL render objectives in the order declared by the package, showing state, brief text for `active` and `complete` objectives, current partial diagnostic text, and revealed hints — and SHALL reveal neither brief nor hints for a `locked` objective. | D |
+
+**Ground-station link visualization**
+
+| ID | Pri | Requirement | Verify |
+|---|---|---|---|
+| R25.8 | T | The link panel SHALL identify the Deep Space Network complex currently holding the link, name the specific antenna carrying it, and animate signal activity distinctly for downlink reception and for an uplink in flight. | D |
+| R25.9 | T | The complex in contact SHALL be derived from probe uptime unless the scenario pins one, so that a replayed session displays the same station sequence as the original. | T |
+| R25.10 | T | The link panel SHALL display the one-way transmission delay in force and the spacecraft antenna in use, and SHALL indicate loss of link within one telemetry period of the probe ceasing to transmit. | D |
+| R25.11 | O | Antenna selection within a complex SHALL reflect the spacecraft antenna in use, a larger aperture being shown for the high-gain link than for the low-gain link. | D |
+
+**Session lifecycle**
+
+| ID | Pri | Requirement | Verify |
+|---|---|---|---|
+| R26.1 | T | The console SHALL provide a menu offering, at minimum: start a scenario, abort the running scenario, save the session, load a saved session, and exit. | D |
+| R26.2 | T | Starting a scenario while one is running SHALL require an explicit confirmation, and SHALL abort the running session before the new one begins. | D |
+| R26.3 | T | Aborting a running scenario SHALL terminate the probe process and release its ports within 10 s, SHALL preserve the command log in full, and SHALL leave the session resumable. | T |
+| R26.4 | T | Save SHALL write a portable session archive containing the command log, the scenario identifier and revision, and the player profile, and SHALL NOT require the scenario to be stopped. | T |
+| R26.5 | T | Load SHALL restore a session from such an archive by replay (R15.1), SHALL refuse an archive whose scenario identifier is not installed, and SHALL warn when the installed revision is higher than the archive's. | T |
+| R26.6 | T | Exit SHALL terminate the probe process, flush the command log, and leave no orphaned emulator process, verified by process inspection after exit. | T |
+| R26.7 | T | No menu action SHALL be able to alter objective state other than by replaying a command log. | I |
+
+> **Why the read-out is scenario-controlled (R25.3).** Decoding the downlink is a core activity, not a chore to automate away: R10.1 requires every documented channel to be decodable from the manual and captured frames alone, and R10.2 requires at least one channel the manual never mentions. A console that decodes everything answers both for the player. The rule adopted is that the console may decode exactly what the mission's documentation already explains — a real ground station has decoders for its documented formats and none for a channel nobody has written down. Tutorial packages opt in generously; a scenario about discovering the telemetry format opts in to nothing. The default is nothing.
 
 
 ## 7. Team Organization

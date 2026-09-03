@@ -84,6 +84,11 @@ A package **shall** be loadable from a directory or from a `.tar.gz` of that dir
     "budget": { "writes": 40, "reads": 2000 }
   },
 
+  "console": {
+    "decode": ["MAG", "IMU", "THM", "PWR", "RAD", "STR", "CAM", "HK", "COMMS"],
+    "dsn_complex": "auto"
+  },
+
   "briefing": "briefing.md",
   "setup": "setup.json",
   "objectives": "objectives.json",
@@ -102,6 +107,14 @@ A package **shall** be loadable from a directory or from a `.tar.gz` of that dir
 | `link.uplink_delay_s` / `downlink_delay_s` | yes | One-way transmission delay the daemon enforces. |
 | `link.require_checksum` | no, default `true` | Whether uplinks must carry the CRC-16 suffix. |
 | `link.budget.writes` / `.reads` | no | Command allowance (charter R4.2/R4.3: state-changing uplinks and reads are metered separately). Absent means unmetered. |
+| `console.decode` | no, default `[]` | Channel names the console may present as decoded values in its spacecraft read-out. See below — this is a **gameplay** setting, not a display preference. |
+| `console.dsn_complex` | no, default `"auto"` | Which Deep Space Network complex holds the link: `"auto"` rotates with probe uptime, or name one of `"goldstone"`, `"madrid"`, `"canberra"` to pin it. |
+
+**`console.decode` decides how much of the game the console gives away.** Decoding the downlink is a core activity — charter R10.1 requires that every channel documented in the recovered manual be decodable from the manual and captured frames alone, and R10.2 requires at least one channel that the manual does not document. A console that decodes everything hands the player the answer to both.
+
+The rule is therefore: **the console may decode exactly what the mission's documentation already explains, and nothing else.** A real ground station has decoders for its documented formats; it does not have a decoder for a channel nobody has written down. So a package lists the channels its manual covers, and every other channel — the undocumented `AUX`, anything a scenario deliberately hides — appears only as raw hexadecimal in the frame feed, for the player to work out.
+
+The default is the empty list, meaning raw only. A tutorial package opts in generously; a package built around discovering the telemetry format opts in to little or nothing.
 
 **Unknown keys.** A daemon **shall** ignore unknown keys at any level rather than rejecting the package. This is what lets format 1 gain optional fields without a flag day. The validator **should** warn about them.
 
