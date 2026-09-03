@@ -27,6 +27,13 @@ static uint8_t pending_ready;
 uint8_t g_dump_enable;
 #define DUMP_MAX 512u
 
+/* One-shot execution of player-supplied code. Like DUMP, present in the
+ * dispatcher but SHIPPED DISABLED, and additionally privileged: it needs
+ * AUTH. CALL runs a routine ONCE and returns; making the probe behave
+ * differently still means hooking the scheduler, so this is a rung on the
+ * ladder rather than a shortcut past the top of it. */
+uint8_t g_call_enable;
+
 /* ---- parsing helpers ---- */
 static int hexval(char c)
 {
@@ -198,6 +205,22 @@ static void cmd_execute(char *cmd)
         uart_puts("ACK DUMP ");
         for (uint32_t i = 0; i < len; i++)
             uart_put_hex8(*(volatile uint8_t *)(addr + i));
+        uart_puts("\r\n");
+    } else if (tok_is(&t[0], "CALL")) {
+        uint32_t addr;
+        if (!g_call_enable) { nak("E08"); return; }
+        if (!g_auth) { nak("E07"); return; }
+        if (n != 2 || parse_hex32(t[1].p, t[1].len, &addr)) { nak("E05"); return; }
+        if (!in_sram(addr, 2)) {
+            nak(addr < ROM_END ? "E04" : "E03");
+            return;
+        }
+        if (protected_range(addr, 2)) { nak("E04"); return; }
+        /* Runs inside the command task: a routine that never returns is
+         * eaten by the watchdog (~3 s), which is the intended lesson. */
+        uint32_t r0 = ((uint32_t (*)(void))(addr | 1u))();
+        uart_puts("ACK CALL ");
+        uart_put_hex32(r0);
         uart_puts("\r\n");
     } else if (tok_is(&t[0], "AUTH")) {
         /* Undocumented engineering-command unlock. Not in the recovered

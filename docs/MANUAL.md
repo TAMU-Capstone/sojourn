@@ -20,8 +20,9 @@ were lost to media degradation and are marked accordingly.*
 
 Sojourn is a long-duration deep-space survey probe of the ISA Outer
 Horizons program. Launched decades before the loss of the program
-archive, it continues to return telemetry across a one-way signal delay
-now measured in tens of hours. Its scientific payload comprises a
+archive, it is now outbound beyond the orbit of Neptune, surveying the
+Kuiper Belt and returning telemetry across a one-way signal delay
+measured in hours. Its scientific payload comprises a
 magnetometer, an inertial measurement unit, a thermal sensor suite, a
 bus power monitor, a radiation counter, a star tracker, and a
 narrow-field imaging camera.

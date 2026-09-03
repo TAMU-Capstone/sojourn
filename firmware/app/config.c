@@ -23,11 +23,11 @@ void config_init(void)
      * image this target returns, so retargeting changes the picture. */
     static const target_t defaults[8] = {
         { 2551,  -172, 12, 1, 0, 0 },   /* 0: survey field K-25 (default)  */
-        {  831,   412,  9, 1, 1, 0 },   /* 1: 1 Ceres — Occator monitoring */
-        { 1904,  -601, 14, 1, 2, 0 },   /* 2: Saturn north polar vortex    */
-        { 3358,   228, 11, 1, 2, 0 },   /* 3: ring-plane crossing survey   */
+        { 2836,  -112, 14, 1, 1, 0 },   /* 1: Pluto — Tombaugh Regio       */
+        { 2841,  -109, 17, 1, 2, 0 },   /* 2: Nix — satellite monitoring   */
+        { 3012,   -87, 19, 1, 3, 0 },   /* 3: Arrokoth (2014 MU69)         */
         {  120,   885,  8, 1, 0, 0 },   /* 4: polar reference field        */
-        { 2789,  -334, 13, 1, 1, 0 },   /* 5: KBO search field D-9         */
+        { 2789,  -334, 13, 1, 3, 0 },   /* 5: KBO search field D-9         */
         {    0,     0,  0, 0, 0, 0 },   /* 6: (unassigned)                 */
         {    0,     0,  0, 0, 0, 0 },   /* 7: (unassigned)                 */
     };

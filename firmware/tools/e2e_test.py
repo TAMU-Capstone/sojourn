@@ -409,6 +409,27 @@ def main():
               f"reboots {reboots_before} -> {f['reboots'] if f else '?'}")
         check("probe still responsive after patch", p.cmd("PING") == "ACK PING")
 
+        print("== 6d. CALL: gated, privileged, one-shot execution ==")
+        call_gate = int(symbols["g_call_enable"], 16)
+        auth_addr = int(symbols["g_auth"], 16)
+        slot1 = 0x2001D080                      # PATCH_SLOT(1), clear of 6c
+        check("CALL exists but is disabled as built",
+              p.cmd(f"CALL 0x{slot1:08X}") == "NAK E08")
+        p.cmd(f"POKE 0x{call_gate:08X} 01")
+        p.cmd(f"POKE 0x{auth_addr:08X} 00")      # drop privilege
+        check("CALL refused without AUTH once enabled",
+              p.cmd(f"CALL 0x{slot1:08X}") == "NAK E07")
+        check("re-authorize", p.cmd("AUTH 5A3C96E1") == "ACK AUTH")
+        # MOVS R0,#42 ; BX LR  -- returns 0x2A in r0
+        r = p.cmd(f"POKE 0x{slot1:08X} 2A207047")
+        check("routine written to the cave", r == "ACK POKE 4", r)
+        check("CALL runs it and returns r0",
+              p.cmd(f"CALL 0x{slot1:08X}") == "ACK CALL 0000002A")
+        check("CALL into protected memory refused",
+              p.cmd("CALL 0x20000000") == "NAK E04")
+        p.cmd(f"POKE 0x{call_gate:08X} 00")
+        check("CALL disabled again", p.cmd(f"CALL 0x{slot1:08X}") == "NAK E08")
+
         print("== 7. brick and recover (watchdog) ==")
         wdg_flags = task_table + 3 * 16 + 12      # entry 3 = wdg_pet, flags @ +12
         r = p.cmd(f"POKE 0x{wdg_flags:08X} 00")

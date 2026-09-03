@@ -126,6 +126,7 @@ void task_camera(void);
 void telemetry_init(void);
 void task_telemetry(void);
 extern uint8_t g_dump_enable;   /* bulk downlink gate (ships 0) */
+extern uint8_t g_call_enable;   /* one-shot execution gate (ships 0) */
 void cmd_poll_rx(void);
 void task_cmd(void);
 void task_wdg_pet(void);

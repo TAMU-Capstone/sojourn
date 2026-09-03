@@ -137,11 +137,11 @@ typedef struct {
 #define SCENE_W          64u
 #define SCENE_H          64u
 #define SCENE_PIXELS     (SCENE_W * SCENE_H)
-#define SCENE_COUNT      4u
+#define SCENE_COUNT      5u
 #define SCENE_STORE_BASE 0x00024000u        /* just past the golden image  */
 #define SCENE_AT(i)      ((const uint8_t *)(SCENE_STORE_BASE + \
                           (uint32_t)(i) * SCENE_PIXELS))
-#define SCENE_EASTER     3u                 /* not reachable from catalog  */
+#define SCENE_EASTER     4u                 /* not reachable from catalog  */
 
 /* ---------- In-flight patching support (spec §6.5) ----------
  *

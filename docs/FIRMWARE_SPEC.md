@@ -4,7 +4,7 @@
 |---|---|
 | **Document** | Golden-Image Flight Firmware, Engineering Design Specification |
 | **Project** | "Sojourn" Reverse Engineering Game Platform |
-| **Version** | 0.7 (Draft — gated DUMP; HK documented; §15 worked through) |
+| **Version** | 0.8 (Draft — gated DUMP and CALL; Kuiper Belt target set; §15 mostly closed) |
 | **Date** | August 26, 2026 |
 | **Authors** | Trevor Bakker (sponsor) with Claude |
 | **Audience** | Instructor and capstone team. **This document is not player-facing** — the player-facing *Recovered Mission Operations Manual* is derived from it with deliberate omissions (§14). |
@@ -51,7 +51,7 @@ Logical layout, enforced by linker scripts and by the `POKE` handler's protectio
 | ROM | `0x0000_0000 – 0x0000_03FF` | 1 KiB | Boot vector table | refused (`E04 PROT`) |
 | ROM | `0x0000_0400 – 0x0000_3FFF` | 15 KiB | Bootloader + ROM services (§5) | refused |
 | ROM | `0x0000_4000 – 0x0002_3FFF` | 128 KiB | **Golden application image** + CRC32 trailer | refused |
-| ROM | `0x0002_4000 – 0x0002_7FFF` | 16 KiB | **Detector image store** — 4 × 64×64 stored scenes, outside the app image so the player's binary holds no pixels (§6.4a) | refused |
+| ROM | `0x0002_4000 – 0x0002_BFFF` | 32 KiB | **Detector image store** — 5 × 64×64 stored scenes (20 KiB used), outside the app image so the player's binary holds no pixels (§6.4a) | refused |
 | SRAM | `0x2000_0000 – 0x2000_00FF` | 256 B | NOINIT persistent block: reboot counter, last-fault code (survives watchdog reset) | refused |
 | SRAM | `0x2000_0100 – 0x2000_0FFF` | 3.75 KiB | Bootloader/system data, watchdog counter | refused |
 | SRAM | `0x2000_1000 – 0x2001_8FFF` | 96 KiB | **APP region**: application code + rodata, copied from golden image at boot, executes in place | writable |
@@ -325,17 +325,17 @@ The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pa
 - **Cortex-M4 vs M3** — *closed.* M4 on `mps2-an386` builds, boots and passes the full suite; the M3/LM3S path remains a documented fallback behind a build flag.
 - **AUX channel content** — *closed.* CRC echo of the last accepted command: a quiet confirmation that rewards attentive frame decoders.
 - **Bulk image downlink** — *closed.* `DUMP` ships **disabled** (§8): early missions pay the 64-command downlink, and restoring the capability becomes an objective.
+- **`CALL` verb** — *closed: added, doubly gated.* It fills the gap in the difficulty ladder between "NOP out a branch" and "write Thumb assembly and hook the scheduler," and is safe there because `CALL` runs a routine *once* while a task hook makes it run *forever* — only the latter changes the probe's behavior. It requires `AUTH` **and** ships disabled behind `g_call_enable`, so an instructor enables it for an intro scenario and leaves it off when the canyon should stay.
+- **Mission fiction vs. imaging targets** — *closed.* Targets moved outward rather than the mission moving inward: the scene set is now Pluto, Nix and Arrokoth, placing Sojourn in the Kuiper Belt, consistent with a signal delay measured in hours.
 - **Housekeeping channel visibility** — *closed.* Channel `0x60` is **documented** in the player manual: it is the only view of heater, propellant, recorder and access state, and the §6.4 flight-function scenarios are unplayable without it. `AUX` (`0x5A`) remains the deliberately undocumented channel satisfying charter R10.2.
 
 **Still open:**
 
-1. **`CALL` verb** (§8). Adding it — `AUTH`-gated, restricted to the writable window — would fill a real gap in the difficulty ladder between "NOP out a branch" and "write Thumb assembly and hook the scheduler." The distinction that makes it safe: `CALL` runs a routine *once*, while a task hook makes it run *forever*, and only the latter changes the probe's behavior. Cost: it hands advanced players a debugger and removes some of the fear that makes injection weighty. Mitigation: gate its availability per scenario exactly as `DUMP` is gated.
-2. **Mission fiction vs. imaging targets** (§6.4a). The manual states a one-way signal delay "measured in tens of hours" — Voyager-like — while the stored scenes are inner solar-system bodies. Being resolved by moving the *targets* outward (distant imagery) rather than moving the mission inward.
-3. **Telemetry cadence** (§9). 5 s remains a guess, and now couples to recorder drain rate and image-downlink pacing. A playtest answer, not a desk answer.
+1. **Telemetry cadence** (§9). 5 s remains a guess, and now couples to recorder drain rate and image-downlink pacing. A playtest answer, not a desk answer.
 4. **Uplink budget vs. imaging** (charter R4.2). A budget tight enough to make patching feel precious can make a 64-command image downlink impossible. These must be tuned together, or imaging needs its own allowance — the `DUMP` gate is one lever.
 5. **Is the detector store `PEEK`-readable?** Currently yes: a player who finds `0x0002_4000` can dump the source imagery at 64 bytes per command. Recommended to keep — it is expensive, and discovering an easter egg by reverse engineering is the point — but a scenario wanting the imagery strictly unreachable can exclude the range from `readable()`.
 6. **Scene resolution** (§6.4a). 64×64 was sized for a synthetic star field; real spacecraft photographs would carry noticeably more detail at 96×96 or 128×128, at 2–4× the downlink cost.
 
 ---
 
-*Version 0.7 — the firmware described here is built, boots under QEMU and passes a 65-check end-to-end suite. Remaining §15 items are content and tuning decisions, not blockers.*
+*Version 0.7 — the firmware described here is built, boots under QEMU and passes a 72-check end-to-end suite. Remaining §15 items are content and tuning decisions, not blockers.*

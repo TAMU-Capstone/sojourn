@@ -83,11 +83,13 @@ def scene_survey():
 
 SCENES = [
     ("survey field K-25 (procedural star field)", scene_survey),
-    ("1 Ceres — Occator bright spots (NASA/JPL Dawn)",
-     lambda: imported("ceres.png")),
-    ("Saturn north polar vortex (NASA/JPL Cassini)",
-     lambda: imported("saturn_hexagon.png")),
-    ("Mimas, Herschel crater (NASA/JPL Cassini) — easter egg, reachable\n       only by the 1% roll",
+    ("Pluto, Tombaugh Regio (NASA/JHUAPL/SwRI, New Horizons)",
+     lambda: imported("pluto.png")),
+    ("Nix, a small moon of Pluto (NASA/JHUAPL/SwRI, New Horizons)",
+     lambda: imported("nix.png")),
+    ("Arrokoth, Kuiper Belt contact binary (NASA/JHUAPL/SwRI)",
+     lambda: imported("arrokoth.png")),
+    ("Mimas (NASA/JPL Cassini) — easter egg: an image this probe could\n       not possibly have taken. Reachable only by the 1% roll.",
      lambda: imported("mimas.png")),
 ]
 
