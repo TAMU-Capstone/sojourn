@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "objectives": [
+    {
+      "id": "stop-the-shedding",
+      "title": "Stop the heater and recover the radiation counter",
+      "brief": "Get the survival heater to switch off, and bring the radiation counter back into the downlink and keep it there.",
+      "points": 30,
+      "success": {
+        "op": "sustained",
+        "frames": 3,
+        "of": {
+          "op": "all",
+          "of": [
+            { "op": "tlm", "path": "channels.HK.heater_on", "cmp": "eq", "value": 0 },
+            { "op": "channel_present", "id": "RAD" }
+          ]
+        }
+      },
+      "partial": [
+        {
+          "when": {
+            "op": "all",
+            "of": [
+              { "op": "tlm", "path": "channels.HK.heater_on", "cmp": "eq", "value": 0 },
+              { "op": "channel_absent", "id": "RAD" }
+            ]
+          },
+          "text": "The heater is off, so the load is back under budget and nothing more will be shed. But the radiation counter is still unpowered -- the power manager switched it off and will not switch it back on. That is yours to undo."
+        },
+        {
+          "when": {
+            "op": "all",
+            "of": [
+              { "op": "channel_present", "id": "RAD" },
+              { "op": "tlm", "path": "channels.HK.heater_on", "cmp": "eq", "value": 1 }
+            ]
+          },
+          "text": "The counter is reporting again, but the heater is still drawing and the bus is still over budget. Expect the power manager to shed it a second time. Remove the cause before restoring the symptom."
+        },
+        {
+          "when": { "op": "tlm", "path": "channels.HK.heater_on", "cmp": "eq", "value": 1 },
+          "text": "The heater is still on. It compares a temperature against a setpoint; one of those two numbers is wrong, and it is not the temperature."
+        }
+      ],
+      "fail": { "op": "tlm", "path": "mode", "cmp": "eq", "value": "SAFE" },
+      "hints": [
+        { "after_frames": 6,
+          "text": "Housekeeping channel 0x60 reports whether the heater is active and how many loads have been shed. Watch both across frames." },
+        { "after_frames": 14,
+          "text": "The thermostat is a task in the scheduler driven entirely by values in the configuration block. Find the block, and the setpoint is a signed 16-bit value in tenths of a degree Celsius." },
+        { "after_frames": 24,
+          "text": "A shed instrument is powered down at its control register, bit 0. The sensor register block is eight identical 16-byte slots in slot-ID order." }
+      ]
+    }
+  ]
+}

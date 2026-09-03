@@ -44,6 +44,7 @@ FIXTURES = [
     ("first-contact",  "first-contact-solution"),
     ("comms-triage",   "comms-triage-solution"),
     ("comms-triage",   "comms-triage-passive"),
+    ("heater-runaway", "heater-runaway-solution"),
     ("grader-hygiene", "grader-hygiene"),
 ]
 

@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "writes": [
+    {
+      "at": { "sym": "g_config", "field": "heater_setpoint_dc" },
+      "u16": 600,
+      "note": "Thermostat setpoint raised to 60.0 C. The probe cruises near 27 C, so the heater can never reach setpoint and never switches off -- a survival heater stuck on, which is a real and common spacecraft fault."
+    },
+    {
+      "at": { "sym": "g_config", "field": "power_budget_mw" },
+      "u16": 2050,
+      "note": "Bus budget trimmed to 2050 mW. Nominal load is 1855; the stuck heater adds 300, so the power manager begins shedding the two lowest-priority loads -- the camera, then the radiation counter."
+    }
+  ],
+  "settle_frames": 2
+}

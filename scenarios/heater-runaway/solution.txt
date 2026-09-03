@@ -1,0 +1,4 @@
+# restore the thermostat setpoint to 10.0 C (int16 little-endian, 0x0064)
+POKE 0x2001913C 6400
+# re-power the radiation counter the power manager shed
+POKE 0x2001E040 01

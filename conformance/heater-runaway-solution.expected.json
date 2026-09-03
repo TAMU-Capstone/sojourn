@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "scenario": "sojourn.thermal.runaway",
+  "revision": 1,
+  "frames": 14,
+  "objectives": [
+    {
+      "id": "stop-the-shedding",
+      "state": "complete",
+      "first_frame": 4
+    }
+  ],
+  "budget": {
+    "writes": 2,
+    "reads": 0
+  }
+}
