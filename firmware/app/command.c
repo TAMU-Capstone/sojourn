@@ -7,7 +7,8 @@
  * scheduler.  ACK/NAK reflects receipt+execution only, never objectives.
  *
  * Error codes: E01 bad CRC · E02 unknown verb · E03 unmapped address ·
- *              E04 protected region · E05 bad length/args · E06 busy.
+ *              E04 protected region · E05 bad length/args · E06 busy ·
+ *              E07 unauthorized · E08 capability disabled.
  */
 #include "app.h"
 
@@ -17,6 +18,14 @@ static uint32_t line_len;
 static uint8_t line_over;
 static char    pending[LINE_MAX];
 static uint8_t pending_ready;
+
+/* Bulk downlink capability. Present in the dispatcher but SHIPPED
+ * DISABLED: a player who finds the verb gets NAK E08 (capability
+ * disabled) rather than "unknown verb", which is the hook for a
+ * "restore the probe's bulk downlink" objective. Until then, images
+ * come down through PEEK at 64 bytes a time. */
+uint8_t g_dump_enable;
+#define DUMP_MAX 512u
 
 /* ---- parsing helpers ---- */
 static int hexval(char c)
@@ -177,6 +186,18 @@ static void cmd_execute(char *cmd)
             *(volatile uint8_t *)(addr + i) = bytes[i];
         uart_puts("ACK POKE ");
         uart_put_u32(nb);
+        uart_puts("\r\n");
+    } else if (tok_is(&t[0], "DUMP")) {
+        uint32_t addr, len;
+        if (!g_dump_enable) { nak("E08"); return; }
+        if (n != 3 || parse_hex32(t[1].p, t[1].len, &addr)) { nak("E05"); return; }
+        if (parse_dec(t[2].p, t[2].len, &len) || len < 1 || len > DUMP_MAX) {
+            nak("E05"); return;
+        }
+        if (!readable(addr, len)) { nak("E03"); return; }
+        uart_puts("ACK DUMP ");
+        for (uint32_t i = 0; i < len; i++)
+            uart_put_hex8(*(volatile uint8_t *)(addr + i));
         uart_puts("\r\n");
     } else if (tok_is(&t[0], "AUTH")) {
         /* Undocumented engineering-command unlock. Not in the recovered

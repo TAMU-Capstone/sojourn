@@ -4,7 +4,7 @@
 |---|---|
 | **Document** | Golden-Image Flight Firmware, Engineering Design Specification |
 | **Project** | "Sojourn" Reverse Engineering Game Platform |
-| **Version** | 0.6 (Draft for sponsor review — scenes moved to a ROM detector store; easter egg) |
+| **Version** | 0.7 (Draft — gated DUMP; HK documented; §15 worked through) |
 | **Date** | August 26, 2026 |
 | **Authors** | Trevor Bakker (sponsor) with Claude |
 | **Audience** | Instructor and capstone team. **This document is not player-facing** — the player-facing *Recovered Mission Operations Manual* is derived from it with deliberate omissions (§14). |
@@ -251,10 +251,13 @@ Format: `VERB [args] *CCCC` — ASCII, space-delimited, terminated `\n`, where `
 | `NOOP` | — | Accepted, no action | `ACK NOOP` |
 | `AUTH` | key (hex32) | *Undocumented.* Unlock engineering commands if key matches `eng_key` in config | `ACK AUTH` / `NAK E07` |
 | `TRIM` | — | *Undocumented, privileged.* Manual reaction-wheel desaturation (needs `AUTH`) | `ACK TRIM` / `NAK E07` |
+| `DUMP` | addr len (≤512) | *Undocumented, **ships disabled**.* Bulk read — 8 commands per image frame instead of 64 | `ACK DUMP <hexbytes>` / `NAK E08` |
 
 The last two verbs are **not** in the recovered manual — they are an engineering back-channel the player discovers by reverse engineering the command dispatcher, and the natural seed for a security scenario: recover the `eng_key` from the binary to unlock privileged control, or (defensively) change the key an attacker would use. `NAK E07` is "unauthorized." The scheduler and dispatcher are table-driven, so adding further gated verbs is a content decision, not a rewrite.
 
-Error replies: `NAK E01` bad CRC · `E02` unknown verb · `E03` unmapped address · `E04` protected region · `E05` bad length/args · `E06` busy · `E07` unauthorized. The ACK/NAK layer is deliberately dumb: it confirms *receipt and execution*, never mission effect (charter R1). Transmission delay and uplink budget are enforced by the game daemon, not the probe; the probe answers as fast as it can.
+Error replies: `NAK E01` bad CRC · `E02` unknown verb · `E03` unmapped address · `E04` protected region · `E05` bad length/args · `E06` busy · `E07` unauthorized · `E08` capability disabled. The ACK/NAK layer is deliberately dumb: it confirms *receipt and execution*, never mission effect (charter R1). Transmission delay and uplink budget are enforced by the game daemon, not the probe; the probe answers as fast as it can.
+
+**A capability to be restored, not a convenience.** `DUMP` is present in the dispatcher but gated by `g_dump_enable`, which ships `0`. A player who discovers the verb gets `NAK E08` — *capability disabled*, not *unknown verb* — so the probe announces that a bulk downlink exists and is switched off. Early scenarios therefore pay the authentic 64-command image downlink, and a later objective becomes "restore the probe's bulk downlink," solved by patching one byte. Friction turns into content instead of tax.
 
 Deliberate omission: there is no `CALL` verb. Executing injected code requires hooking the task table (or patching a call site) — keeping the hardest objective an act of understanding, not a built-in convenience. Adding `CALL` later is a one-line scenario-difficulty decision; the dispatcher is table-driven to make that trivial.
 
@@ -316,14 +319,23 @@ The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pa
 
 ## 15. Open Questions for Sponsor Review
 
-1. **Sensor suite & fiction**: is the lineup (§6) — six sensors plus the imaging subsystem — right, and do the names fit the mission fiction you want?
-2. **`CALL` verb**: agreed to omit (§8), or do you want it present but protection-gated as an easier on-ramp for a future intro course?
-3. **AUX channel content** (§9): command-CRC echo, or something more scenario-specific?
-4. **Cortex-M4 vs M3**: M4 on MPS2 is primary; any institutional reason to prefer the LM3S/M3 fallback as primary?
-5. **Reproducibility**: fixed PRNG seed (reproducible runs, easier grading/debugging) vs per-boot seed (livelier feel) — current spec says fixed.
-6. **Telemetry cadence**: 5 s default is tuned for classroom pacing; confirm.
-7. **Image downlink ergonomics**: keep the pure `PEEK`-dump (≈64 commands per frame — deliberate, authentic pain) or add a bulk `DUMP` verb for lower-friction image missions? Could also be scenario-gated: `DUMP` exists but is disabled until a player patches it back on.
+**Resolved since first issue** (recorded so the reasoning is not lost):
+
+- **Reproducibility** — *closed, and not a preference.* Charter R15.1 restores progress by replaying the command log against a fresh probe. Clock- or entropy-derived behavior would make a replayed log diverge, so determinism is an architectural requirement: a fixed PRNG seed for sensor physics, and a replay-deterministic roll for the imaging easter egg.
+- **Cortex-M4 vs M3** — *closed.* M4 on `mps2-an386` builds, boots and passes the full suite; the M3/LM3S path remains a documented fallback behind a build flag.
+- **AUX channel content** — *closed.* CRC echo of the last accepted command: a quiet confirmation that rewards attentive frame decoders.
+- **Bulk image downlink** — *closed.* `DUMP` ships **disabled** (§8): early missions pay the 64-command downlink, and restoring the capability becomes an objective.
+- **Housekeeping channel visibility** — *closed.* Channel `0x60` is **documented** in the player manual: it is the only view of heater, propellant, recorder and access state, and the §6.4 flight-function scenarios are unplayable without it. `AUX` (`0x5A`) remains the deliberately undocumented channel satisfying charter R10.2.
+
+**Still open:**
+
+1. **`CALL` verb** (§8). Adding it — `AUTH`-gated, restricted to the writable window — would fill a real gap in the difficulty ladder between "NOP out a branch" and "write Thumb assembly and hook the scheduler." The distinction that makes it safe: `CALL` runs a routine *once*, while a task hook makes it run *forever*, and only the latter changes the probe's behavior. Cost: it hands advanced players a debugger and removes some of the fear that makes injection weighty. Mitigation: gate its availability per scenario exactly as `DUMP` is gated.
+2. **Mission fiction vs. imaging targets** (§6.4a). The manual states a one-way signal delay "measured in tens of hours" — Voyager-like — while the stored scenes are inner solar-system bodies. Being resolved by moving the *targets* outward (distant imagery) rather than moving the mission inward.
+3. **Telemetry cadence** (§9). 5 s remains a guess, and now couples to recorder drain rate and image-downlink pacing. A playtest answer, not a desk answer.
+4. **Uplink budget vs. imaging** (charter R4.2). A budget tight enough to make patching feel precious can make a 64-command image downlink impossible. These must be tuned together, or imaging needs its own allowance — the `DUMP` gate is one lever.
+5. **Is the detector store `PEEK`-readable?** Currently yes: a player who finds `0x0002_4000` can dump the source imagery at 64 bytes per command. Recommended to keep — it is expensive, and discovering an easter egg by reverse engineering is the point — but a scenario wanting the imagery strictly unreachable can exclude the range from `readable()`.
+6. **Scene resolution** (§6.4a). 64×64 was sized for a synthetic star field; real spacecraft photographs would carry noticeably more detail at 96×96 or 128×128, at 2–4× the downlink cost.
 
 ---
 
-*Version 0.1 — on approval, next steps are bring-up of the bootloader + UART + telemetry skeleton under QEMU, then the sensor SIM tier, then the command interpreter — at which point the golden-image demo in §12 is live.*
+*Version 0.7 — the firmware described here is built, boots under QEMU and passes a 65-check end-to-end suite. Remaining §15 items are content and tuning decisions, not blockers.*

@@ -224,9 +224,29 @@ had the effect you intended.
 | `0x04` | Radiation (RAD) | int32 | Cumulative particle count |
 | `0x05` | Star tracker (STR) | int32 | Attitude quaternion term ×10000 |
 | `0x43` | Camera (CAM) | 12 bytes | Capture metadata (§6.3) |
+| `0x60` | Housekeeping (HK) | 8 bytes | Spacecraft subsystem state (§5.4) |
 
 > In SAFE mode the probe transmits the header only, with no data
 > channels, to conserve power.
+
+### 5.4 Housekeeping Channel (0x60)
+
+Eight bytes reporting the state of the spacecraft's own subsystems —
+the only view the ground has of them:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | Heater active (0/1) |
+| 1 | 1 | Autonomous load-shed events since restart |
+| 2 | 2 | Propellant remaining, milligrams |
+| 4 | 2 | Accumulated momentum (signed) |
+| 6 | 1 | Recorder buffer occupancy, percent |
+| 7 | 1 | Engineering access state |
+
+Momentum accumulates as the probe is pushed by its environment and is
+discharged by the attitude-control system, which spends propellant to do
+it. If propellant runs out, momentum will climb and stay high. Recorder
+occupancy at 100 % means science data is being lost.
 
 > ▓▓▓ **APPENDIX C — RESERVED / DIAGNOSTIC CHANNELS** ▓▓▓
 > ▓▓▓ *appendix missing* ▓▓▓

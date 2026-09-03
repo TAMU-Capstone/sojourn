@@ -318,6 +318,21 @@ def main():
               f"{egg_px[:6].hex()} vs {t0_px[:6].hex()}")
         p.cmd(f"POKE 0x{egg:08X} 00")
 
+        # Bulk downlink ships disabled: the verb exists but announces itself
+        # as a capability to be restored, not an unknown command.
+        dump_gate = int(symbols["g_dump_enable"], 16)
+        check("DUMP exists but is disabled as built",
+              p.cmd(f"DUMP 0x{fb:08X} 64") == "NAK E08")
+        p.cmd(f"POKE 0x{dump_gate:08X} 01")
+        r = p.cmd(f"DUMP 0x{fb:08X} 256")
+        check("DUMP works once the gate is patched on",
+              r and r.startswith("ACK DUMP ") and len(r.split()[-1]) == 512,
+              (r or "")[:40])
+        peeked = bytes.fromhex(p.cmd(f"PEEK 0x{fb:08X} 64").split()[-1])
+        check("DUMP bytes agree with PEEK",
+              r.split()[-1].upper().startswith(peeked.hex().upper()))
+        p.cmd(f"POKE 0x{dump_gate:08X} 00")
+
         print("== 6b. auxiliary flight functions ==")
         f = next_tlm(p)
         hk = f["ch"].get(0x60, b"") if f else b""
