@@ -408,16 +408,22 @@ The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pa
 - **Detector store readability** — *closed: left readable.* A player who finds `0x0002_4000` can dump the source imagery. Note the interaction with `DUMP`: once bulk downlink is unlocked that costs 18 commands rather than 144, so a scenario that unlocks `DUMP` also makes the easter egg cheaper to spoil. Accepted.
 - **Scene resolution** — *closed: 96×96.* Real spacecraft photographs carry appreciably more at 96×96 (9216 bytes); a full downlink is 144 `PEEK`s, or 18 with `DUMP` enabled.
 - **Housekeeping channel visibility** — *closed.* Channel `0x60` is **documented** in the player manual: it is the only view of heater, propellant, recorder and access state, and the §6.4 flight-function scenarios are unplayable without it. `AUX` (`0x5A`) remains the deliberately undocumented channel satisfying charter R10.2.
-
 - **Telemetry cadence** — *closed: 5 s, and now load-bearing.* The comms model (§6.4b) derives the per-frame byte budget from the link rate and the cadence, so 5 s is no longer an arbitrary heartbeat: it is the constant that makes the high gain afford 100 bytes and the omni 40, which is what creates the triage. Changing it changes the difficulty of every bandwidth scenario, and `tlm_period` is itself a patch surface a player may discover. Revisit after playtest with that coupling in mind rather than as a free parameter.
 
 **Still open:**
 
-*None.* All questions raised at first issue are resolved; further changes should come from playtest evidence.
-4. **Uplink budget vs. imaging** (charter R4.2). A budget tight enough to make patching feel precious can make a 64-command image downlink impossible. These must be tuned together, or imaging needs its own allowance — the `DUMP` gate is one lever.
-5. **Is the detector store `PEEK`-readable?** Currently yes: a player who finds `0x0002_4000` can dump the source imagery at 64 bytes per command. Recommended to keep — it is expensive, and discovering an easter egg by reverse engineering is the point — but a scenario wanting the imagery strictly unreachable can exclude the range from `readable()`.
-6. **Scene resolution** (§6.4a). 64×64 was sized for a synthetic star field; real spacecraft photographs would carry noticeably more detail at 96×96 or 128×128, at 2–4× the downlink cost.
+*None.* Every question raised at first issue is resolved. Further changes to the values above should come from playtest evidence rather than desk reasoning.
+
+**Known gaps — not open questions, but work not yet done.** These are scoped deliberately: the reference firmware is complete, and what remains below is the capstone team's build.
+
+| Gap | Status |
+|---|---|
+| **Game daemon** (§13, charter) — scenario loading, objective evaluation, command log, saves by replay | Specified, not built. This is the students' primary deliverable. |
+| **Scenario packages** — `manifest` / `symbols.json` / `memmap.json` / objective assertions as pure content | The firmware side of the seam exists (`make` emits both JSON files); no package format instance yet. |
+| **Harness tier** (§6, Renode) — sensors as true MMIO at the same addresses rather than SIM-tier RAM | Specified with identical observable behavior; only the QEMU SIM tier is built. |
+| **Web front end** (charter) — console, telemetry view, objective status | Not started. |
+| **Easter-egg source resolution** | `assets/mimas.png` is 64×64 (Cassini) bilinearly upscaled to 96×96; the other four scenes are native 96×96. A 96×96-or-larger Mimas source would remove the only soft image in the store. |
 
 ---
 
-*Version 0.7 — the firmware described here is built, boots under QEMU and passes an 81-check end-to-end suite. Remaining §15 items are content and tuning decisions, not blockers.*
+*Version 1.0 — the firmware described here is built, boots under QEMU and macOS, and passes a 99-check end-to-end suite. §15 carries no open questions; what remains is the platform around the firmware, listed above.*
