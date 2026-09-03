@@ -50,8 +50,9 @@ body{margin:0;background:var(--void);color:var(--ink);font-family:var(--body);
   flex-direction:column;gap:6px;justify-content:center}
 .dsn-id .cx{font-family:var(--cond);font-weight:700;font-size:26px;letter-spacing:.05em;
   text-transform:uppercase;line-height:1;color:#eaf2fa}
-.flagbar{display:flex;width:34px;height:20px;border:1px solid #2a3644;overflow:hidden}
-.flagbar i{flex:1}
+.flagbar{width:40px;height:22px;border:1px solid #2a3644;line-height:0;
+  cursor:pointer;flex:none}
+.flagbar svg{display:block}
 .dishes{display:flex;align-items:flex-end;justify-content:space-around;padding:6px 10px 0}
 .dish{position:relative;text-align:center;flex:1;max-width:150px}
 .dish svg{display:block;margin:0 auto;overflow:visible}
@@ -205,7 +206,7 @@ dialog button.pri{border-color:var(--signal);color:var(--signal)}
   <!-- ================= DSN strip ================= -->
   <div class="dsn">
     <div class="dsn-id">
-      <div class="flagbar"><i style="background:#b22234"></i><i style="background:#fff"></i><i style="background:#3c3b6e"></i></div>
+      <div class="flagbar" id="flag" title="Click to preview the other complexes"></div>
       <div class="cx" id="cxName">Goldstone</div>
       <div class="lbl" id="cxSub">DSS-25 · 34 m · X-band</div>
       <div class="lbl num" id="cxClock" style="color:var(--faint)">MET 00:00:05</div>
@@ -274,13 +275,57 @@ const DECODE = ["MAG","IMU","THM","PWR","RAD","STR","HK","COMMS"];
 const UNITS = {MAG:["Magnetometer","nT",1],IMU:["Inertial","°/s",100],THM:["Thermal","°C",10],
                PWR:["Bus monitor","mV",1],RAD:["Radiation","ct",1],STR:["Star tracker","q",10000]};
 
+/* ---------- national flags for the three DSN complexes ----------
+   Drawn rather than coloured bars: three vertical stripes read as the French
+   tricolour whatever colours you give them. */
+const FLAG = {
+  us(){
+    let st = "";
+    for (let i = 0; i < 13; i++)
+      st += `<rect x="0" y="${i*22/13}" width="40" height="${22/13}" fill="${i%2?"#fff":"#b22234"}"/>`;
+    let stars = "";
+    for (let r = 0; r < 4; r++)
+      for (let c = 0; c < 5; c++)
+        stars += `<circle cx="${1.7+c*3.1}" cy="${1.6+r*2.9}" r="0.62" fill="#fff"/>`;
+    return `<svg width="40" height="22" viewBox="0 0 40 22">${st}
+      <rect x="0" y="0" width="16" height="${22*7/13}" fill="#3c3b6e"/>${stars}</svg>`;
+  },
+  es(){
+    return `<svg width="40" height="22" viewBox="0 0 40 22">
+      <rect width="40" height="22" fill="#aa151b"/>
+      <rect y="5.5" width="40" height="11" fill="#f1bf00"/>
+      </svg>`;
+  },
+  au(){
+    return `<svg width="40" height="22" viewBox="0 0 40 22">
+      <rect width="40" height="22" fill="#00247d"/>
+      <g><rect x="0" y="0" width="20" height="11" fill="#00247d"/>
+        <path d="M0 0 L20 11 M20 0 L0 11" stroke="#fff" stroke-width="2.4"/>
+        <path d="M0 0 L20 11 M20 0 L0 11" stroke="#cf142b" stroke-width="1"/>
+        <path d="M10 0 V11 M0 5.5 H20" stroke="#fff" stroke-width="3.4"/>
+        <path d="M10 0 V11 M0 5.5 H20" stroke="#cf142b" stroke-width="1.7"/></g>
+      <circle cx="10" cy="16.5" r="1.5" fill="#fff"/>
+      <circle cx="30" cy="4.5" r="0.9" fill="#fff"/>
+      <circle cx="34.5" cy="9" r="0.9" fill="#fff"/>
+      <circle cx="29" cy="13.5" r="0.9" fill="#fff"/>
+      <circle cx="25.5" cy="9" r="0.75" fill="#fff"/>
+      <circle cx="31" cy="18" r="0.6" fill="#fff"/>
+      </svg>`;
+  }
+};
+
 /* ---------- DSN complexes: derived from probe uptime, never the wall clock ---------- */
 const COMPLEX = [
-  {name:"Goldstone", dishes:[14,23,24,25,26], flag:["#b22234","#fff","#3c3b6e"]},
-  {name:"Madrid",    dishes:[53,54,55,63,65], flag:["#aa151b","#f1bf00","#aa151b"]},
-  {name:"Canberra",  dishes:[33,34,35,36,43], flag:["#00247d","#fff","#00247d"]}
+  {name:"Goldstone", dishes:[14,23,24,25,26], flag:"us"},
+  {name:"Madrid",    dishes:[53,54,55,63,65], flag:"es"},
+  {name:"Canberra",  dishes:[34,35,36,43,45], flag:"au"}
 ];
-const complexFor = up => COMPLEX[Math.floor(up/28800) % COMPLEX.length];
+/* Earth turns, so each complex holds a deep-space target for roughly eight
+   hours. Derived from probe uptime, so a replayed session shows the same
+   station sequence as the original (R25.9). */
+let cxPreview = 0;
+const complexFor = up =>
+  COMPLEX[(Math.floor(up/28800) + cxPreview) % COMPLEX.length];
 
 /* ---------- objective model: evaluated from the captured frames ---------- */
 const OBJS = [
@@ -379,7 +424,7 @@ function render(){
   /* --- DSN --- */
   const cx = complexFor(f.up);
   document.getElementById("cxName").textContent = cx.name;
-  document.querySelectorAll(".flagbar i").forEach((el,i)=> el.style.background = cx.flag[i]);
+  document.getElementById("flag").innerHTML = FLAG[cx.flag]();
   const hh = String(Math.floor(f.up/3600)).padStart(2,"0"),
         mm = String(Math.floor(f.up/60)%60).padStart(2,"0"),
         ss = String(f.up%60).padStart(2,"0");
@@ -387,7 +432,8 @@ function render(){
   /* the antenna carrying the link: bigger aperture on the high gain */
   const actIdx = s.ant === "HGA" ? 0 : 3;
   document.getElementById("cxSub").textContent =
-      `DSS-${cx.dishes[actIdx]} · ${s.ant === "HGA" ? "70 m" : "34 m"} · X-band`;
+      `DSS-${cx.dishes[actIdx]} · ${s.ant === "HGA" ? "70 m" : "34 m"} · X-band`
+      + (cxPreview ? " · preview" : "");
   const tx = DATA.commands.some(c => c.frame === n);
   document.getElementById("dishes").innerHTML = cx.dishes.map((d,i)=>{
     const on = i === actIdx;
@@ -522,6 +568,13 @@ function openDlg(k){
       : `<button class="pri" onclick="dlg.close()">Close</button>`;
   dlg.showModal();
 }
+
+/* A capture only 85 s long never rotates complexes on its own, so the flag
+   is clickable to preview the other two. */
+document.getElementById("flag").onclick = () => {
+  cxPreview = (cxPreview + 1) % COMPLEX.length;
+  render();
+};
 
 render(); play(true);
 </script>
