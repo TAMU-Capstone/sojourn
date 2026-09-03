@@ -129,6 +129,20 @@ typedef struct {
 #define MODE_NOMINAL    1u
 #define MODE_SAFE       2u
 
+/* ---------- Detector image store (spec §6.4a) ----------
+ * Stored camera scenes live in ROM at a FIXED address outside the golden
+ * application image, so the binary the player analyses carries no pixels —
+ * only the code that reads them. The camera writes its processed output
+ * into the frame buffer; that captured raw is what the ground downlinks. */
+#define SCENE_W          64u
+#define SCENE_H          64u
+#define SCENE_PIXELS     (SCENE_W * SCENE_H)
+#define SCENE_COUNT      4u
+#define SCENE_STORE_BASE 0x00024000u        /* just past the golden image  */
+#define SCENE_AT(i)      ((const uint8_t *)(SCENE_STORE_BASE + \
+                          (uint32_t)(i) * SCENE_PIXELS))
+#define SCENE_EASTER     3u                 /* not reachable from catalog  */
+
 /* ---------- In-flight patching support (spec §6.5) ----------
  *
  * Real missions patch running software that has no room for the new code, so

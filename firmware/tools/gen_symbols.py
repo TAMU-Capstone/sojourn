@@ -21,7 +21,7 @@ KEY_SYMBOLS = [
     "g_momentum", "g_desat_count", "g_rec_fill", "g_auth",
     # imaging pipeline (imaging.c / scenes.c)
     "image_process", "imaging_init", "cam_lut", "cam_kernel",
-    "scene_data", "scene_for_target",
+    "scene_store", "scene_for_target", "g_cam_egg_pct",
     # boot
     "rom_services", "rom_prot", "vectors",
 ]

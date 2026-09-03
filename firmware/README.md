@@ -42,7 +42,7 @@ typically already present).
     make gdb        # attach the cross-gdb it finds (arm-none-eabi-gdb or gdb-multiarch)
     make tlm        # boot the probe and stream DECODED telemetry (see below)
     make run-tcp    # boot with the UART on tcp:5599 (one client at a time)
-    make test       # 60-check end-to-end suite
+    make test       # 62-check end-to-end suite
 
 Overridable: `make CROSS=... QEMU_BIN=... PYTHON=...` if your tools have
 nonstandard names or live off PATH.
@@ -179,7 +179,7 @@ read-only alongside a scripted uplink session against `run-tcp`
 
 ## Verify
 
-    make test    # 60 checks: framing, protocol, protection, objective-1
+    make test    # 62 checks: framing, protocol, protection, objective-1
                  # flow, camera + imaging pipeline, flight functions,
                  # trampoline patching, brick + watchdog recovery
 
@@ -193,7 +193,8 @@ read-only alongside a scripted uplink session against `run-tcp`
     app/command.c      uplink interpreter: PING/PEEK/POKE/STAT/SAFE/NOOP (+ undocumented AUTH/TRIM)
     app/flight.c       auxiliary flight functions: heater, power-shed, attitude, recorder
     app/imaging.c      image pipeline: transfer LUT, convolution kernel, filters
-    app/scenes.c       GENERATED stored target images (tools/gen_scenes.py)
+    app/scenes.c       GENERATED detector image store -> ROM, not the app image
+    assets/            NASA source imagery for the scenes (+ credits)
     app/config.c       mission config block + target catalog + function tunables
     ld/                boot.ld (ROM), app.ld (execute-in-place at 0x20001000)
     tools/             image fixup, symbols generator, telemetry decoder,
@@ -202,11 +203,27 @@ read-only alongside a scripted uplink session against `run-tcp`
 
 ## Camera images and the processing pipeline
 
-Each catalog target selects one of four stored 64×64 grayscale scenes
-(star field, calibration star, comet, cratered body). The camera reads
-the scene, runs it through a pipeline, and writes the result into the
-frame buffer — which is what the ground downlinks. Pixels never ride in
-telemetry, only capture statistics.
+Each catalog target selects one of four stored 64×64 grayscale scenes: a
+survey star field, **1 Ceres** and **Saturn's north polar vortex** (both
+NASA/JPL public-domain imagery, in `assets/`), and a hidden fourth. The
+camera reads the scene, runs it through a pipeline, and writes the result
+into the frame buffer — which is what the ground downlinks. Pixels never
+ride in telemetry, only capture statistics.
+
+**The source images are not in the player's binary.** They live in a
+*detector image store* in ROM at `0x00024000`, outside the golden
+application image, reached via `SCENE_AT(i)`. `probe_app.bin` — the
+player's `probe.bin` — contains no pixels, only the code that reads an
+address. (Moving them cut it from 21,532 to 5,191 bytes.) A player can
+still recover the source, but only by finding the address and
+`PEEK`-dumping ROM, 64 commands per scene, against the uplink budget.
+
+**Easter egg.** Scene 3 is referenced by no catalog entry, so it cannot
+be commanded — but roughly 1 capture in 100 returns it anyway: Mimas,
+the moon whose Herschel crater makes it look like a certain battle
+station. The roll advances from a fixed seed, not the clock, so a
+replayed command log reproduces it exactly. `g_cam_egg_pct` sets the
+rate (0 disables, 100 forces).
 
 Every pipeline stage is a patch surface, easiest first:
 
@@ -230,7 +247,8 @@ Recover an actual picture — this drives the real downlink, 64 bytes per
     python3 tools/img_recover.py --invert              # inverting LUT
     python3 tools/img_recover.py --threshold 96
     python3 tools/img_recover.py --filter blur|sharpen|edge
-    python3 tools/img_recover.py --target 3            # different scene
+    python3 tools/img_recover.py --target 2            # different scene
+    python3 tools/img_recover.py --egg                 # force the easter egg
 
 Everything the tool does is an ordinary uplink a player could type by
 hand. Regenerate the scenes with `python3 tools/gen_scenes.py`.

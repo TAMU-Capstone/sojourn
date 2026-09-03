@@ -16,6 +16,16 @@
 
 static uint32_t last_capture_s;
 
+/* Roughly one capture in a hundred returns something the catalog cannot
+ * command. Advanced per capture from a fixed seed rather than from the
+ * clock, so a replayed command log reproduces it exactly — the platform's
+ * saves are command-log replays. */
+static uint32_t cam_roll;
+
+/* Percentage of captures that return the easter-egg scene. Scenario- and
+ * test-controllable: 0 disables it, 100 forces it. */
+uint8_t g_cam_egg_pct;
+
 void camera_init(void)
 {
     xmemset((void *)&CAM->cctrl, 0, sizeof(cam_reg_t));
@@ -28,6 +38,8 @@ void camera_init(void)
     CAM->frame_len   = FRAMEBUF_SIZE;
     CAM->cstat       = CSTAT_READY;
     imaging_init();
+    cam_roll = 0x4D1A5A17u;
+    g_cam_egg_pct = 1u;
     xmemset((void *)FB, 0, FRAMEBUF_SIZE);
 }
 
@@ -37,7 +49,14 @@ const uint8_t *scene_for_target(uint32_t target)
     const target_t *t = &g_config.catalog[target & 7u];
     uint32_t idx = t->scene;
     if (idx >= SCENE_COUNT) idx = 0u;
-    return scene_data[idx];
+    return SCENE_AT(idx);                 /* read straight from ROM store */
+}
+
+static int easter_roll(uint32_t target)
+{
+    if (g_cam_egg_pct == 0u) return 0;
+    cam_roll ^= target * 2654435761u;
+    return (xorshift32(&cam_roll) % 100u) < g_cam_egg_pct;
 }
 
 static void do_capture(void)
@@ -54,7 +73,10 @@ static void do_capture(void)
 
     /* Read the stored scene for this target, run it through the imaging
      * pipeline, and write the result into the frame buffer (imaging.c). */
-    image_process(scene_for_target(CAM->target), (uint8_t *)FB);
+    const uint8_t *src = easter_roll(CAM->target)
+                       ? SCENE_AT(SCENE_EASTER)
+                       : scene_for_target(CAM->target);
+    image_process(src, (uint8_t *)FB);
 
     /* Statistics computed from the pixels actually written to the frame
      * buffer, so they describe the downlinked product, not the source. */

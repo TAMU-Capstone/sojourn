@@ -8,7 +8,7 @@
 #   make gdb        attach a cross-gdb to a running gdbserver
 #   make tlm        boot the probe and stream DECODED telemetry
 #   make run-tcp    boot with UART on tcp:5599 (attach decoder/console to it)
-#   make test       run the 60-check end-to-end suite
+#   make test       run the 62-check end-to-end suite
 #   make clean
 
 CROSS    ?= arm-none-eabi-
@@ -27,8 +27,8 @@ CFLAGS  := -mcpu=cortex-m4 -mthumb -Os -g -ffreestanding -fno-builtin \
 LDFLAGS := -nostdlib -Wl,--build-id=none
 
 APP_SRC  := app/main.c app/uart.c app/config.c app/sensors.c app/camera.c \
-            app/telemetry.c app/command.c app/flight.c app/imaging.c app/scenes.c common/util.c
-BOOT_SRC := boot/boot.c common/util.c
+            app/telemetry.c app/command.c app/flight.c app/imaging.c common/util.c
+BOOT_SRC := boot/boot.c common/util.c app/scenes.c
 
 QEMU     := $(QEMU_BIN) -M mps2-an386 -nographic
 ROM_ELF  := $(BUILD)/probe_rom.elf

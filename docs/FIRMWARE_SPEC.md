@@ -4,7 +4,7 @@
 |---|---|
 | **Document** | Golden-Image Flight Firmware, Engineering Design Specification |
 | **Project** | "Sojourn" Reverse Engineering Game Platform |
-| **Version** | 0.5 (Draft for sponsor review — adds stored scenes & imaging pipeline, §6.4a) |
+| **Version** | 0.6 (Draft for sponsor review — scenes moved to a ROM detector store; easter egg) |
 | **Date** | August 26, 2026 |
 | **Authors** | Trevor Bakker (sponsor) with Claude |
 | **Audience** | Instructor and capstone team. **This document is not player-facing** — the player-facing *Recovered Mission Operations Manual* is derived from it with deliberate omissions (§14). |
@@ -51,6 +51,7 @@ Logical layout, enforced by linker scripts and by the `POKE` handler's protectio
 | ROM | `0x0000_0000 – 0x0000_03FF` | 1 KiB | Boot vector table | refused (`E04 PROT`) |
 | ROM | `0x0000_0400 – 0x0000_3FFF` | 15 KiB | Bootloader + ROM services (§5) | refused |
 | ROM | `0x0000_4000 – 0x0002_3FFF` | 128 KiB | **Golden application image** + CRC32 trailer | refused |
+| ROM | `0x0002_4000 – 0x0002_7FFF` | 16 KiB | **Detector image store** — 4 × 64×64 stored scenes, outside the app image so the player's binary holds no pixels (§6.4a) | refused |
 | SRAM | `0x2000_0000 – 0x2000_00FF` | 256 B | NOINIT persistent block: reboot counter, last-fault code (survives watchdog reset) | refused |
 | SRAM | `0x2000_0100 – 0x2000_0FFF` | 3.75 KiB | Bootloader/system data, watchdog counter | refused |
 | SRAM | `0x2000_1000 – 0x2001_8FFF` | 96 KiB | **APP region**: application code + rodata, copied from golden image at boot, executes in place | writable |
@@ -140,7 +141,20 @@ The config block (§7) holds every tunable — setpoints, budgets, rates, moment
 
 ### 6.4a Stored Scenes and the Imaging Pipeline
 
-The camera does not synthesize pixels. Each catalog target carries a **scene index** selecting one of `SCENE_COUNT` stored 64×64 8-bit grayscale images (`scenes.c`, generated deterministically by `tools/gen_scenes.py`): a survey star field, a calibration star with diffraction spikes, a comet with coma and tail, and a cratered outer-belt body. The camera reads that scene, runs it through the pipeline below, and **writes the result into the frame buffer** — which is what the ground downlinks.
+The camera does not synthesize pixels. Each catalog target carries a **scene index** selecting one of `SCENE_COUNT` stored 64×64 8-bit grayscale images. The camera reads that scene, runs it through the pipeline below, and **writes the result into the frame buffer** — which is what the ground downlinks.
+
+**Where the source images live — and why not in the player's binary.** The scenes are *not* part of the application. They occupy a **detector image store** in ROM at a fixed address (`0x0002_4000`) deliberately placed **outside the golden application image**, and the app reaches them through `SCENE_AT(i)`. The player receives `probe_app.bin`, which therefore contains **no pixels at all** — only the code that reads an address. Verified by the build: moving the scenes cut the player binary from 21,532 to 5,191 bytes, and a byte-search for scene data in it fails.
+
+A player can still obtain the source, but only by earning it: find the store address in the disassembly and `PEEK`-dump ROM at 64 bytes per command (64 commands per scene, against the uplink budget). That is a legitimate and expensive act of reverse engineering, which is the right way to discover an easter egg. If a scenario wants the source strictly unreachable, the command interpreter's `readable()` window can exclude the store — and in the Renode harness tier (§6) the detector becomes a scripted peripheral, so the imagery never exists in the firmware at all and authors can swap it without rebuilding.
+
+| Scene | Subject | Origin |
+|---|---|---|
+| 0 | Survey field K-25 | procedural star field |
+| 1 | 1 Ceres, Occator bright spots | NASA/JPL-Caltech (Dawn), public domain |
+| 2 | Saturn north polar vortex and rings | NASA/JPL-Caltech (Cassini), public domain |
+| 3 | Mimas — **easter egg** | procedural |
+
+**The easter egg.** Scene 3 is *not referenced by any catalog entry*, so it cannot be commanded. Roughly **1 capture in 100** returns it instead of the commanded target: Mimas, the Saturnian moon whose 130 km Herschel crater gives it a famously Death-Star-like silhouette. The roll is advanced per capture from a fixed seed rather than from the clock, so it is **replay-deterministic** — essential, because the platform's saves are command-log replays (charter R15.1) and a truly random egg would make a replayed log diverge. `g_cam_egg_pct` controls the rate: `0` disables it, `100` forces it, which is how the regression test verifies the scene exists.
 
 > **Why raw pixels rather than a stored JPEG/PNG.** A compressed image cannot be meaningfully inverted or filtered by poking bytes, and an on-board decoder would be a large block of un-patchable code. Real missions downlink raw sensor data and form image products on the ground, so the probe holds raw pixels and the *ground station* writes the PNG (`tools/img_recover.py`). That keeps every stage of the pipeline a legitimate patch target.
 

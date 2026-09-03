@@ -1,23 +1,31 @@
 #!/usr/bin/env python3
-"""gen_scenes.py — generate the camera's stored target scenes.
+"""gen_scenes.py — build the probe's stored camera scenes.
 
-Emits app/scenes.c: SCENE_COUNT raw 64x64 8-bit grayscale images, one per
-survey target in the config catalog. These are the *source* pixels the
-imaging pipeline reads; the camera writes its processed output into the
-frame buffer, which is what gets downlinked.
+Emits app/scenes.c: SCENE_COUNT raw 64x64 8-bit grayscale images placed in
+the ROM **detector image store**, a fixed-address region OUTSIDE the golden
+application image. The player's binary therefore contains no pixels — only
+the code that reads them. See spec §6.4a.
 
-Deterministic (fixed LCG), so every build produces byte-identical scenes
-and scenario assertions stay stable.
+Two scenes are imported from NASA planetary imagery in assets/; the survey
+star field and the Mimas easter egg are rendered procedurally here.
+Everything is deterministic, so every build is byte-identical and scenario
+assertions stay stable.
 """
 import math
 import pathlib
+import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from png import read_gray_png                                   # noqa: E402
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+ASSETS = ROOT / "assets"
 W = H = 64
 N = W * H
 
 
 class R:
-    """Small deterministic LCG — reproducible across Python versions."""
+    """Deterministic LCG — reproducible across Python versions."""
     def __init__(self, seed):
         self.s = seed & 0xFFFFFFFF
 
@@ -29,10 +37,6 @@ class R:
         return lo + self.next() % (hi - lo + 1)
 
 
-def blank(bg=10):
-    return [bg] * N
-
-
 def add(img, x, y, v):
     if 0 <= x < W and 0 <= y < H:
         p = img[y * W + x] + v
@@ -40,147 +44,129 @@ def add(img, x, y, v):
 
 
 def star(img, cx, cy, peak, spread=1.0):
-    """A small point-spread function: bright core, quick falloff."""
     r = int(spread * 2) + 1
     for dy in range(-r, r + 1):
         for dx in range(-r, r + 1):
-            d2 = dx * dx + dy * dy
-            v = int(peak * math.exp(-d2 / (2.0 * spread * spread)))
+            v = int(peak * math.exp(-(dx * dx + dy * dy) / (2.0 * spread * spread)))
             if v:
                 add(img, cx + dx, cy + dy, v)
 
 
-def spikes(img, cx, cy, length, peak):
-    for i in range(1, length):
-        v = int(peak * (1.0 - i / length) * 0.5)
-        add(img, cx + i, cy, v)
-        add(img, cx - i, cy, v)
-        add(img, cx, cy + i, v)
-        add(img, cx, cy - i, v)
-
-
-def gradient(img, top=6, bottom=16):
+def imported(name):
+    """Load a NASA source image from assets/, resampled to 64x64."""
+    path = ASSETS / name
+    w, h, px = read_gray_png(path)
+    if (w, h) == (W, H):
+        return list(px)
+    out = [0] * N                                   # nearest-neighbour
     for y in range(H):
-        v = top + (bottom - top) * y // H
+        sy = y * h // H
         for x in range(W):
-            img[y * W + x] = v
+            out[y * W + x] = px[sy * w + (x * w // W)]
+    return out
 
 
 # ---- scene 0: survey field K-25 — a plain star field -----------------
 def scene_survey():
     r = R(0x5A17)
-    img = blank(9)
-    gradient(img, 7, 14)
+    img = [0] * N
+    for y in range(H):                              # faint sky gradient
+        v = 7 + 7 * y // H
+        for x in range(W):
+            img[y * W + x] = v
     for _ in range(38):
-        x, y = r.rng(1, W - 2), r.rng(1, H - 2)
-        star(img, x, y, r.rng(150, 245), 0.85)
-    for _ in range(60):                       # faint background sources
+        star(img, r.rng(1, W - 2), r.rng(1, H - 2), r.rng(150, 245), 0.85)
+    for _ in range(60):
         star(img, r.rng(0, W - 1), r.rng(0, H - 1), r.rng(40, 90), 0.6)
     return img
 
 
-# ---- scene 1: calibration star HR-2941 — one dominant source ---------
-def scene_calibration():
-    r = R(0x2941)
-    img = blank(8)
-    gradient(img, 6, 12)
-    for _ in range(12):
-        star(img, r.rng(2, W - 3), r.rng(2, H - 3), r.rng(90, 160), 0.7)
-    star(img, 32, 31, 250, 2.2)
-    spikes(img, 32, 31, 14, 210)
-    return img
+# ---- scene 3: Mimas — the "Death Star moon" easter egg ---------------
+# Saturn's moon Mimas, whose 130 km Herschel crater famously gives it a
+# Death Star silhouette. Rendered here rather than imported so the joke
+# carries no third-party artwork.
+def scene_mimas():
+    r = R(0x4D1A)
+    img = [0] * N
+    for _ in range(45):                             # background stars
+        star(img, r.rng(0, W - 1), r.rng(0, H - 1), r.rng(60, 200), 0.55)
 
+    cx, cy, rad = 30.0, 33.0, 23.0
+    hx, hy, hrad = 22.0, 24.0, 8.0                  # Herschel crater
+    craters = [(r.rng(-18, 18), r.rng(-18, 18), r.rng(2, 5)) for _ in range(22)]
 
-# ---- scene 2: comet 41P — nucleus, coma, tail ------------------------
-def scene_comet():
-    r = R(0x41C0)
-    img = blank(8)
-    gradient(img, 6, 12)
-    for _ in range(20):
-        star(img, r.rng(0, W - 1), r.rng(0, H - 1), r.rng(80, 150), 0.65)
-    nx, ny = 24, 40
-    for y in range(H):                        # coma
-        for x in range(W):
-            d = math.hypot(x - nx, y - ny)
-            if d < 13:
-                add(img, x, y, int(120 * math.exp(-d / 4.5)))
-    for t in range(0, 46):                    # tail toward upper-right
-        tx = nx + int(t * 0.80)
-        ty = ny - int(t * 0.52)
-        wdt = 1 + t // 12
-        for o in range(-wdt, wdt + 1):
-            add(img, tx, ty + o, int(95 * math.exp(-t / 22.0)))
-    star(img, nx, ny, 245, 1.5)               # nucleus
-    return img
-
-
-# ---- scene 3: outer-belt object — a cratered, crescent-lit disk ------
-def scene_disk():
-    r = R(0x7C56)
-    img = blank(7)
-    cx, cy, rad = 32, 32, 21
-    craters = [(r.rng(-14, 14), r.rng(-14, 14), r.rng(3, 6)) for _ in range(9)]
     for y in range(H):
         for x in range(W):
             dx, dy = x - cx, y - cy
             d = math.hypot(dx, dy)
             if d > rad:
                 continue
-            # limb darkening + terminator: lit from the left
-            lam = (1.0 - (dx + rad) / (2.0 * rad))       # 1 at left, 0 at right
-            shade = max(0.0, lam) ** 0.75
-            edge = math.sqrt(max(0.0, 1.0 - (d / rad) ** 2))
-            v = int(30 + 215 * shade * (0.55 + 0.45 * edge))
-            for (ox, oy, orad) in craters:                # craters
-                if math.hypot(dx - ox, dy - oy) < orad:
-                    v = int(v * 0.62)
-                if abs(math.hypot(dx - ox, dy - oy) - orad) < 1.0:
-                    v = min(255, int(v * 1.25))           # bright rim
-            img[y * W + x] = max(0, min(255, v))
-    for _ in range(14):
-        x, y = r.rng(0, W - 1), r.rng(0, H - 1)
-        if math.hypot(x - cx, y - cy) > rad + 2:
-            star(img, x, y, r.rng(110, 190), 0.7)
+            # Lit from the upper left; crescent terminator toward lower right.
+            nx, ny = dx / rad, dy / rad
+            nz = math.sqrt(max(0.0, 1.0 - nx * nx - ny * ny))
+            lam = (-0.62 * nx) + (-0.45 * ny) + (0.64 * nz)
+            v = 22 + 210 * max(0.0, lam) ** 0.85
+
+            for (ox, oy, orad) in craters:          # pocked surface
+                cd = math.hypot(dx - ox, dy - oy)
+                if cd < orad:
+                    v *= 0.72
+                elif cd < orad + 1.0:
+                    v *= 1.12
+
+            hd = math.hypot(dx - (hx - cx), dy - (hy - cy))
+            if hd < hrad:                            # Herschel: deep bowl
+                depth = math.sqrt(max(0.0, 1.0 - (hd / hrad) ** 2))
+                v *= (0.30 + 0.22 * (1.0 - depth))
+                if hd < hrad * 0.26:                 # central peak
+                    v *= 2.5
+            elif hd < hrad + 1.6:                    # bright rim
+                v *= 1.5
+
+            img[y * W + x] = max(0, min(255, int(v)))
     return img
 
 
 SCENES = [
-    ("survey field K-25", scene_survey),
-    ("calibration star HR-2941", scene_calibration),
-    ("comet 41P recovery field", scene_comet),
-    ("outer-belt object 2007-XV56", scene_disk),
+    ("survey field K-25 (procedural star field)", scene_survey),
+    ("1 Ceres — Occator bright spots (NASA/JPL Dawn)",
+     lambda: imported("ceres.png")),
+    ("Saturn north polar vortex (NASA/JPL Cassini)",
+     lambda: imported("saturn_hexagon.png")),
+    ("Mimas — easter egg, reachable only by the 1% roll", scene_mimas),
 ]
 
 
 def main():
-    out = pathlib.Path(__file__).resolve().parent.parent / "app" / "scenes.c"
+    out = ROOT / "app" / "scenes.c"
     lines = [
         "/* scenes.c — GENERATED by tools/gen_scenes.py. Do not edit by hand.",
         " *",
-        " * Stored camera target scenes: raw 64x64 8-bit grayscale source",
-        " * pixels, one per survey target. The imaging pipeline (imaging.c)",
-        " * reads these and the camera writes its processed output into the",
-        " * frame buffer, which is what the ground station downlinks.",
+        " * The probe's detector image store: raw 64x64 8-bit grayscale source",
+        " * pixels. This object is linked into the ROM image at a fixed address",
+        " * OUTSIDE the golden application image, so the binary the player",
+        " * analyses contains no imagery — only the code that reads it. The",
+        " * camera writes its processed output into the frame buffer, and that",
+        " * captured raw is what the ground downlinks. (Spec §6.4a.)",
         " */",
-        '#include "app.h"',
+        '#include "probe.h"',
         "",
+        "__attribute__((section(\".scene_store\"), used))",
+        "const uint8_t scene_store[SCENE_COUNT][SCENE_PIXELS] = {",
     ]
     for idx, (name, fn) in enumerate(SCENES):
         img = fn()
         assert len(img) == N and all(0 <= v <= 255 for v in img), name
         lines.append(f"/* scene {idx}: {name} */")
-        lines.append(f"static const uint8_t scene{idx}[SCENE_PIXELS] = {{")
+        lines.append("{")
         for r0 in range(0, N, 16):
-            row = ",".join(f"0x{v:02X}" for v in img[r0:r0 + 16])
-            lines.append(f"    {row},")
-        lines.append("};")
-        lines.append("")
-    lines.append("const uint8_t *const scene_data[SCENE_COUNT] = {")
-    lines.append("    " + ", ".join(f"scene{i}" for i in range(len(SCENES))) + ",")
+            lines.append("    " + ",".join(f"0x{v:02X}" for v in img[r0:r0 + 16]) + ",")
+        lines.append("},")
     lines.append("};")
     lines.append("")
     out.write_text("\n".join(lines))
-    print(f"{out}: {len(SCENES)} scenes, {N} bytes each")
+    print(f"{out}: {len(SCENES)} scenes x {N} bytes "
+          f"-> ROM store {len(SCENES) * N} bytes")
 
 
 if __name__ == "__main__":

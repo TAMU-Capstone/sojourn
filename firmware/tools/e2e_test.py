@@ -256,6 +256,11 @@ def main():
 
         print("== 6a. imaging pipeline (stored scenes, LUT, retarget) ==")
         lut = int(symbols["cam_lut"], 16)
+        egg = int(symbols["g_cam_egg_pct"], 16)
+        check("scene store lives outside the player binary",
+              int(symbols["scene_store"], 16) < 0x20000000,
+              symbols["scene_store"])
+        p.cmd(f"POKE 0x{egg:08X} 00")        # deterministic imaging checks
         fb = 0x20020000
         # restore a sane exposure after the overexposure check above
         p.cmd(f"POKE 0x{CAM_BASE + 0x0C:08X} FA000000")      # 250 ms
@@ -302,6 +307,16 @@ def main():
         t0_px = bytes.fromhex(p.cmd(f"PEEK 0x{fb + 2048:08X} 32").split()[-1])
         check("retargeting returns a different scene", t3_px != t0_px,
               f"{t3_px[:6].hex()} vs {t0_px[:6].hex()}")
+
+        # The easter egg: forcing the rate to 100% must return a scene the
+        # catalog cannot command, proving it exists and is reachable.
+        p.cmd(f"POKE 0x{egg:08X} 64")
+        p.cmd(f"POKE 0x{CAM_BASE:08X} 03")
+        time.sleep(2.5)
+        egg_px = bytes.fromhex(p.cmd(f"PEEK 0x{fb + 2048:08X} 32").split()[-1])
+        check("easter egg returns an uncommandable scene", egg_px != t0_px,
+              f"{egg_px[:6].hex()} vs {t0_px[:6].hex()}")
+        p.cmd(f"POKE 0x{egg:08X} 00")
 
         print("== 6b. auxiliary flight functions ==")
         f = next_tlm(p)

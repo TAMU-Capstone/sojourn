@@ -114,6 +114,8 @@ def main():
     ap.add_argument("--connect", metavar="HOST:PORT",
                     help="attach to a running probe (default: spawn QEMU)")
     ap.add_argument("--target", type=int, help="retarget the camera first (0-7)")
+    ap.add_argument("--egg", action="store_true",
+                    help="force the easter-egg scene (sets the roll to 100%%)")
     ap.add_argument("--invert", action="store_true",
                     help="install an inverting LUT before capturing")
     ap.add_argument("--threshold", type=int, metavar="T",
@@ -156,6 +158,13 @@ def main():
         time.sleep(1.0)
         if not link.cmd("PING"):
             sys.exit("probe not answering")
+
+        if args.egg:
+            import json as _j
+            sp = ROOT / "build" / "symbols.json"
+            addr = int(_j.load(open(sp))["symbols"]["g_cam_egg_pct"], 16)
+            link.poke(addr, bytes([100]))
+            print("easter-egg roll forced to 100%")
 
         if args.target is not None:
             link.poke(CAM_TARGET, bytes([args.target & 7, 0, 0, 0]))

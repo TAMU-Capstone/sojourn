@@ -83,20 +83,18 @@ extern uint8_t  g_desat_count;
 extern uint16_t g_rec_fill;                 /* recorder buffer occupancy     */
 extern uint8_t  g_auth;                     /* engineering command unlocked  */
 
-/* ---- imaging pipeline (imaging.c): all patchable ---- */
-#define SCENE_W       64u
-#define SCENE_H       64u
-#define SCENE_PIXELS  (SCENE_W * SCENE_H)
-#define SCENE_COUNT   4u
+/* ---- imaging pipeline (imaging.c): all patchable ----
+ * Scene geometry and the ROM store live in probe.h (spec §6.4a). */
 
 /* cam_filter stages, OR-ed together */
 #define FILT_NONE     0x00u
 #define FILT_LUT      0x01u         /* map every pixel through cam_lut[]    */
 #define FILT_CONV     0x02u         /* 3x3 convolution with cam_kernel[]    */
 
-extern const uint8_t *const scene_data[SCENE_COUNT];
 extern uint8_t cam_lut[256];        /* transfer curve — invert lives here   */
 extern int8_t  cam_kernel[9];       /* 3x3 convolution coefficients         */
+
+extern uint8_t g_cam_egg_pct;   /* easter-egg rate, percent */
 
 void imaging_init(void);
 void image_process(const uint8_t *src, uint8_t *dst);

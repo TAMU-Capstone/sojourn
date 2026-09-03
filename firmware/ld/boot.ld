@@ -24,9 +24,19 @@ SECTIONS
         _app_image_end = .;
     } > ROM
 
+    /* Detector image store: fixed address, deliberately NOT part of the
+     * golden application image the player receives. */
+    .scene_store 0x00024000 : {
+        _scene_store_start = .;
+        KEEP(*(.scene_store))
+        _scene_store_end = .;
+    } > ROM
+
     /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) *(.data*) *(.bss*)
                   *(__patchable_function_entries) }
 }
 
 /* The bootloader must be stateless outside its fixed-address blocks. */
 ASSERT(_app_image_start == 0x4000, "golden image must sit at ROM 0x4000")
+ASSERT(_app_image_end <= 0x24000, "golden image must not reach the scene store")
+ASSERT(_scene_store_start == 0x24000, "scene store must sit at ROM 0x24000")
