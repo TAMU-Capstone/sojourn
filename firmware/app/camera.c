@@ -97,7 +97,7 @@ static void do_capture(void)
 }
 
 /* 1 Hz task. */
-void task_camera(void)
+PATCH_ENTRY void task_camera(void)
 {
     sensor_reg_t *cam = &SENSORS[SLOT_CAM];
     if (!(cam->ctrl & SCTRL_POWER)) {

@@ -23,7 +23,7 @@ static uint32_t put8(uint32_t o, uint8_t v)  { frame[o] = v; return o + 1; }
 static uint32_t put16(uint32_t o, uint16_t v){ frame[o] = (uint8_t)(v >> 8); frame[o+1] = (uint8_t)v; return o + 2; }
 static uint32_t put32(uint32_t o, uint32_t v){ o = put16(o, (uint16_t)(v >> 16)); return put16(o, (uint16_t)v); }
 
-void task_telemetry(void)
+PATCH_ENTRY void task_telemetry(void)
 {
     uint32_t o = 3;                            /* leave room for SYNC+LEN   */
 

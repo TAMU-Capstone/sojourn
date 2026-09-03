@@ -196,6 +196,33 @@ read-only alongside a scripted uplink session against `run-tcp`
     tools/             image fixup, symbols.json generator, e2e test
     include/probe.h    the memory-map contract (matches memmap.json)
 
+## Patching space (trampolines)
+
+The firmware pre-plants space so a patch that doesn't fit in place can
+detour out and come back — the situation real missions hit, without the
+hazard of relocating PC-relative instructions:
+
+- **Entry pad** — every scheduled task begins with 8 bytes of NOPs
+  (`PATCH_ENTRY`, i.e. `-fpatchable-function-entry`), ahead of its
+  compiler prologue. Overwrite them with a jump; resume at `<func>+8`
+  and the original body runs untouched.
+- **Inline patch points** — 8-byte NOP sleds sit immediately before key
+  decisions (thermostat, power budget, desaturation, recorder balance,
+  safe-mode trip) via `PATCH_POINT()`.
+- **Code cave** — 4 KiB of free RAM at `0x2001D000`, 32 × 128 B slots,
+  where the injected instructions live.
+
+The 8-byte absolute jump needs no offset math (Thumb bit set in the
+target word):
+
+    DF F8 00 F0     LDR.W PC, [PC, #0]
+    <target|1>      .word
+
+`make test` installs a real hook this way against `task_acs` and proves
+both halves: the hook runs (a sentinel appears in telemetry) and control
+returns into the original function (momentum keeps advancing). See spec
+§6.5 for the worked example and the difficulty ladder.
+
 ## Design invariants (do not break these)
 
 - The watchdog and vector table live in ROM; `VTOR` never points into RAM.

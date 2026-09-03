@@ -207,7 +207,7 @@ static void cmd_execute(char *cmd)
 }
 
 /* Called every main-loop iteration: drain RX into a line buffer. */
-void cmd_poll_rx(void)
+PATCH_ENTRY void cmd_poll_rx(void)
 {
     while (uart_rx_ready()) {
         char c = uart_getc();
@@ -232,7 +232,7 @@ void cmd_poll_rx(void)
 }
 
 /* Scheduler task: execute at most one pending command per tick. */
-void task_cmd(void)
+PATCH_ENTRY void task_cmd(void)
 {
     if (pending_ready) {
         cmd_execute(pending);

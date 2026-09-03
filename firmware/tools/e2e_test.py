@@ -278,6 +278,58 @@ def main():
         check("auth flag set in telemetry", len(hk) == 8 and hk[7] == 1,
               str(hk[7] if len(hk) == 8 else None))
 
+        print("== 6c. trampoline patch (detour out and return) ==")
+        # The scenario a real mission faces: change a function that has no
+        # room for the new code. Overwrite its 8-byte entry pad with a jump
+        # into the code cave, run new instructions there, then jump back to
+        # <func>+8 so the original body still executes. Nothing is relocated,
+        # because only NOP padding is overwritten.
+        task_acs = int(symbols["task_acs"], 16)
+        shed_addr = int(symbols["g_shed_count"], 16)
+        cave = 0x2001D000                       # PATCH_SLOT(0)
+        ret = (task_acs + 8) | 1                # back into the real body
+        SENTINEL = 42
+
+        hook = bytes([
+            0x02, 0x48,                         # LDR  R0,[PC,#8]  -> &g_shed_count
+            SENTINEL, 0x21,                     # MOVS R1,#42
+            0x01, 0x70,                         # STRB R1,[R0]
+            0x02, 0x4A,                         # LDR  R2,[PC,#8]  -> return addr
+            0x10, 0x47,                         # BX   R2
+            0x00, 0xBF,                         # NOP (align literals)
+        ]) + shed_addr.to_bytes(4, "little") + ret.to_bytes(4, "little")
+
+        r = p.cmd(f"POKE 0x{cave:08X} {hook.hex().upper()}")
+        check("write hook into code cave", r == f"ACK POKE {len(hook)}", r)
+        r = p.cmd(f"PEEK 0x{cave:08X} {len(hook)}")
+        check("hook reads back intact",
+              r and r.split()[-1].upper() == hook.hex().upper(), r)
+
+        f = next_tlm(p)
+        hk_before = f["ch"].get(0x60, b"") if f else b""
+        mom_before = int.from_bytes(hk_before[4:6], "big", signed=True) if len(hk_before) == 8 else 0
+        reboots_before = f["reboots"] if f else -1
+
+        detour = bytes([0xDF, 0xF8, 0x00, 0xF0]) + (cave | 1).to_bytes(4, "little")
+        r = p.cmd(f"POKE 0x{task_acs:08X} {detour.hex().upper()}")
+        check("detour written over the entry pad", r == "ACK POKE 8", r)
+
+        time.sleep(3)
+        f = next_tlm(p)
+        hk_after = f["ch"].get(0x60, b"") if f else b""
+        if len(hk_after) == 8:
+            check("hook executed (sentinel in telemetry)", hk_after[1] == SENTINEL,
+                  f"shed_count={hk_after[1]}, expected {SENTINEL}")
+            mom_after = int.from_bytes(hk_after[4:6], "big", signed=True)
+            check("returned into original function (momentum still advancing)",
+                  mom_after > mom_before, f"{mom_before} -> {mom_after}")
+        else:
+            check("hook executed (sentinel in telemetry)", False, "no HK channel")
+            check("returned into original function (momentum still advancing)", False, "no HK")
+        check("probe did not fault (no reboot)", f and f["reboots"] == reboots_before,
+              f"reboots {reboots_before} -> {f['reboots'] if f else '?'}")
+        check("probe still responsive after patch", p.cmd("PING") == "ACK PING")
+
         print("== 7. brick and recover (watchdog) ==")
         wdg_flags = task_table + 3 * 16 + 12      # entry 3 = wdg_pet, flags @ +12
         r = p.cmd(f"POKE 0x{wdg_flags:08X} 00")

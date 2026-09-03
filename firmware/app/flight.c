@@ -38,7 +38,7 @@ void flight_init(void)
 /* ---- Thermal control: a hysteretic thermostat on the THM sensor. ----
  * Draws heater power (folded into the bus load by task_physics) when the
  * probe is cold. Scenario hooks: setpoint, hysteresis, enable, draw. */
-void task_heater(void)
+PATCH_ENTRY void task_heater(void)
 {
     if (!g_config.heater_enable) {
         g_heater_on = 0;
@@ -48,6 +48,7 @@ void task_heater(void)
     int32_t t  = SENSORS[SLOT_THM].data;         /* deci-°C                */
     int32_t sp = g_config.heater_setpoint_dc;
     int32_t h  = g_config.heater_hyst_dc;
+    PATCH_POINT();          /* room to detour the thermostat decision */
     if (t < sp - h)      g_heater_on = 1;
     else if (t > sp + h) g_heater_on = 0;
     g_heater_mw = g_heater_on ? g_config.heater_draw_mw : 0;
@@ -61,10 +62,11 @@ static const uint8_t shed_order[] = {
     SLOT_CAM, SLOT_RAD, SLOT_STR, SLOT_IMU, SLOT_MAG,
 };
 
-void task_power_mgr(void)
+PATCH_ENTRY void task_power_mgr(void)
 {
     if (!g_config.shed_enable)
         return;
+    PATCH_POINT();          /* room to detour the budget test          */
     if (g_load_mw <= g_config.power_budget_mw)
         return;
     for (unsigned i = 0; i < sizeof shed_order; i++) {
@@ -82,11 +84,12 @@ void task_power_mgr(void)
  * the limit the probe desaturates, spending propellant. If propellant is
  * exhausted the wheel saturates (momentum sticks high) — an observable
  * failure. Scenario hooks: enable, torque, momentum limit, desat cost. */
-void task_acs(void)
+PATCH_ENTRY void task_acs(void)
 {
     if (!g_config.acs_enable)
         return;
     g_momentum += (int16_t)g_config.acs_torque;
+    PATCH_POINT();          /* room to detour the desat decision      */
     if (g_momentum >= (int16_t)g_config.acs_momentum_max) {
         if (g_propellant_mg >= g_config.acs_desat_cost_mg) {
             g_propellant_mg -= g_config.acs_desat_cost_mg;
@@ -102,7 +105,7 @@ void task_acs(void)
  * and drains at the downlink rate. If generation outpaces downlink the
  * buffer fills to capacity (data loss). Scenario hooks: enable, rates,
  * capacity. */
-void task_recorder(void)
+PATCH_ENTRY void task_recorder(void)
 {
     if (!g_config.rec_enable)
         return;
@@ -112,6 +115,7 @@ void task_recorder(void)
             gen += g_config.rec_gen_per_sensor;
 
     uint32_t drain = g_config.rec_downlink_rate;
+    PATCH_POINT();          /* room to detour the fill/drain balance  */
     if (gen > drain) {
         g_rec_fill += (uint16_t)(gen - drain);
     } else {

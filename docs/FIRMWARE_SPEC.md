@@ -4,7 +4,7 @@
 |---|---|
 | **Document** | Golden-Image Flight Firmware, Engineering Design Specification |
 | **Project** | "Sojourn" Reverse Engineering Game Platform |
-| **Version** | 0.3 (Draft for sponsor review — adds auxiliary flight functions, §6.4) |
+| **Version** | 0.4 (Draft for sponsor review — adds in-flight patching support, §6.5) |
 | **Date** | August 26, 2026 |
 | **Authors** | Trevor Bakker (sponsor) with Claude |
 | **Audience** | Instructor and capstone team. **This document is not player-facing** — the player-facing *Recovered Mission Operations Manual* is derived from it with deliberate omissions (§14). |
@@ -55,7 +55,7 @@ Logical layout, enforced by linker scripts and by the `POKE` handler's protectio
 | SRAM | `0x2000_0100 – 0x2000_0FFF` | 3.75 KiB | Bootloader/system data, watchdog counter | refused |
 | SRAM | `0x2000_1000 – 0x2001_8FFF` | 96 KiB | **APP region**: application code + rodata, copied from golden image at boot, executes in place | writable |
 | SRAM | `0x2001_9000 – 0x2001_CFFF` | 16 KiB | App `.data`/`.bss`, heap, incl. task table (§7) | writable |
-| SRAM | `0x2001_D000 – 0x2001_DFFF` | 4 KiB | Unused ("free RAM") — the intended, but undocumented, code-injection landing zone | writable |
+| SRAM | `0x2001_D000 – 0x2001_DFFF` | 4 KiB | **Code cave** — undocumented landing zone for injected instructions; 32 × 128 B slots (§6.5) | writable |
 | SRAM | `0x2001_E000 – 0x2001_EFFF` | 4 KiB | **Sensor register block** (SIM tier, §6) | writable* |
 | SRAM | `0x2001_F000 – 0x2001_FFFF` | 4 KiB | Stacks (main + handler) | writable |
 | SRAM | `0x2002_0000 – 0x2002_0FFF` | 4 KiB | **CAM frame buffer** — most recent image, raw 64×64 8-bit grayscale (§6.1) | writable |
@@ -137,6 +137,54 @@ Beyond the science payload, the firmware carries a set of **plausible housekeepi
 | **Data recorder** | `task_recorder` | Fills with science data per active sensor, drains at `rec_downlink_rate`; caps at `rec_buffer_max` | Buffer overflow / data loss when downlink is disabled or generation is spiked |
 
 The config block (§7) holds every tunable — setpoints, budgets, rates, momentum limits, propellant load, and the engineering-command key (§8). All of it lives in patchable working memory. Defaults: heater setpoint 10.0 °C (off in nominal warmth), power budget 5000 mW (no shedding), ACS on with 8000 mg propellant, recorder draining faster than it fills.
+
+### 6.5 In-Flight Patching: Pads, Cave, and Trampolines
+
+The hardest constraint in real spacecraft maintenance is that **the fix rarely fits where the bug is**. Voyager's 2024 recovery was exactly this: the affected code had to be relocated elsewhere in memory because there was no room to repair it in place. The firmware therefore ships with pre-planted space so a player can *detour* — jump out of a function into spare memory, run new instructions, and return into the original body.
+
+**Why pre-planted space matters.** The naive detour overwrites real instructions, which then have to be relocated ("stolen") into the cave. On ARM that is genuinely hazardous: any PC-relative operand (`LDR` literal, `ADR`, `B`/`BL`, anything reading `PC`) silently computes a different address once moved. By overwriting only padding, nothing needs relocation, and the technique becomes teachable before it becomes hard.
+
+Three mechanisms, all in patchable RAM:
+
+| Mechanism | Where | Size | Use |
+|---|---|---|---|
+| **Entry pad** (`PATCH_ENTRY`) | First bytes of every scheduled task, ahead of its compiler prologue | 8 B (4 NOPs) | Hook the whole function: jump out, do work, return to `<func>+8` and the original body runs untouched |
+| **Inline patch point** (`PATCH_POINT()`) | Immediately before a decision inside a body (thermostat test, power-budget test, desat test, recorder balance, safe-mode trip) | 8 B (4 NOPs) | Alter one branch rather than the whole function |
+| **Code cave** | Free RAM `0x2001_D000`–`0x2001_DFFF` | 4 KiB = 32 × 128 B slots | Where the new instructions live |
+
+Both pads are produced by the compiler (`-fpatchable-function-entry` via attribute, and a volatile NOP sled), so the symbol for a padded function points at the **first NOP** — the patch site is simply `<func>+0`, and the resume point is `<func>+8`.
+
+**The jump idiom.** An 8-byte absolute branch that needs no offset arithmetic (the target word must carry the Thumb bit):
+
+```
+DF F8 00 F0     LDR.W PC, [PC, #0]
+<target|1>      .word
+```
+
+**Worked example** (this is the automated regression test in `tools/e2e_test.py`, run on every build). Hook `task_acs`, set a sentinel, then fall back into the real function:
+
+```
+; --- in the cave at 0x2001D000 ---
+48 02   LDR  R0,[PC,#8]      -> &g_shed_count
+21 2A   MOVS R1,#42
+70 01   STRB R1,[R0]
+4A 02   LDR  R2,[PC,#8]      -> resume address
+47 10   BX   R2
+BF 00   NOP                  ; align the literals
+<&g_shed_count>              ; +12
+<(task_acs+8)|1>             ; +16
+
+; --- over the 8-byte entry pad of task_acs ---
+DF F8 00 F0  <0x2001D000|1>
+```
+
+Two uplinks install it. Telemetry then shows the sentinel (proving the hook ran) while momentum keeps advancing (proving control returned into the original body).
+
+**Difficulty ladder.** The pads make the technique approachable, and removing them makes it authentic — a scenario can escalate deliberately:
+
+1. *Easiest* — no assembly at all: repoint a task-table `handler` at a routine written into the cave.
+2. *Moderate* — the pad detour above: overwrite only NOPs, resume at `+8`.
+3. *Hard* — patch a function with no pad: overwrite real instructions, relocate the stolen ones into the cave, and resume mid-function. This is where PC-relative operands must be recognized and rewritten, and where a mistake earns a watchdog reset (§10) rather than a corrupted mission.
 
 ## 7. Application Structure — Cooperative Scheduler
 
@@ -222,7 +270,7 @@ How the charter's four-step ramp (R9) maps onto this design — each objective h
 | 1. Disable failing sensor | MAG `CTRL.POWER` bit; or its polling-table enable flag (partial: power still drawn) |
 | 2. Change mission parameter | Telemetry period / comms tunable in the config block |
 | 3. Patch code | `fault_monitor` comparison or branch (stop spurious safe-mode trips); NOP a call site |
-| 4. Inject functionality | Routine into free RAM (`0x2001_D000`) + hook an empty task-table slot or patch a call |
+| 4. Inject functionality | Routine into the code cave (`0x2001_D000`) + hook an empty task-table slot, detour a function's 8-byte entry pad, or take an inline patch point (§6.5) |
 | Camera missions (reference-scenario extras or scenario #2) | Retarget: `TARGET` register or a catalog entry. Fix exposure: `EXPOSURE_MS`/`GAIN`, verified by `SAT_PCT` falling and `STARS` rising in channel `0x43`. Image downlink: `PEEK`-dump the frame buffer under the uplink budget |
 | Auxiliary-function missions (§6.4, future scenarios) | Thermal: heater setpoint/enable, verified by `heater_on` + `LOAD_MW`. Power: `power_budget_mw`/`shed_enable`/shed-priority table, verified by `shed_count` and a vanishing sensor channel. Attitude: `acs_*` params/enable + `TRIM`, verified by `momentum`/`propellant_mg`. Recorder: `rec_*` params, verified by `rec_fill_pct`. Security: recover `eng_key`, `AUTH`-unlock, or re-key it — verified by the `auth` flag |
 

@@ -12,7 +12,7 @@
 task_t task_table[N_TASKS];
 volatile uint32_t g_mode;
 
-void task_wdg_pet(void) { ROM_SVC->wdg_reload(); }
+PATCH_ENTRY void task_wdg_pet(void) { ROM_SVC->wdg_reload(); }
 
 /* Golden image header — patched with size+CRC by tools/fixup_app.py. */
 void app_main(void);

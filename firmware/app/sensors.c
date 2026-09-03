@@ -65,7 +65,7 @@ void sensors_init(void)
 }
 
 /* 10 Hz — the SIM-tier physics tick. */
-void task_physics(void)
+PATCH_ENTRY void task_physics(void)
 {
     uint32_t up = uptime_s();
     uint32_t load = 0;
@@ -139,7 +139,7 @@ void task_physics(void)
 }
 
 /* 2 Hz — stage readings for the telemetry encoder (the "polling table"). */
-void task_sensor_poll(void)
+PATCH_ENTRY void task_sensor_poll(void)
 {
     for (int i = 0; i <= SLOT_STR; i++) {
         sensor_reg_t *s = &SENSORS[i];
@@ -153,7 +153,7 @@ void task_sensor_poll(void)
 }
 
 /* 1 Hz — persistent-fault safing (spec §10). */
-void task_fault_monitor(void)
+PATCH_ENTRY void task_fault_monitor(void)
 {
     int faulting = 0;
     for (int i = 0; i < N_SENSORS; i++)
@@ -161,11 +161,12 @@ void task_fault_monitor(void)
             faulting = 1;
     fault_secs = faulting ? fault_secs + 1u : 0u;
 
+    PATCH_POINT();          /* room to detour the safe-mode trip      */
     if (g_config.safe_fault_limit_s && fault_secs >= g_config.safe_fault_limit_s)
         enter_safe();
 }
 
-void enter_safe(void)
+PATCH_ENTRY void enter_safe(void)
 {
     g_mode = MODE_SAFE;
     for (int i = 0; i < N_SENSORS; i++)

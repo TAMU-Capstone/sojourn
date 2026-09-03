@@ -129,6 +129,40 @@ typedef struct {
 #define MODE_NOMINAL    1u
 #define MODE_SAFE       2u
 
+/* ---------- In-flight patching support (spec §6.5) ----------
+ *
+ * Real missions patch running software that has no room for the new code, so
+ * the fix is a DETOUR: overwrite a few bytes with a jump to spare memory, run
+ * the new instructions there, then jump back into the original function. The
+ * hard part is that overwriting real instructions means relocating them,
+ * which breaks any PC-relative operand. This firmware removes that hazard by
+ * pre-planting space that is safe to overwrite:
+ *
+ *   1. PATCH_ENTRY   — 8 bytes of NOPs at a function's entry, ahead of its
+ *      prologue. Overwrite them with a jump; return to <func>+8 and the
+ *      original body runs untouched. Hooks the whole function.
+ *   2. PATCH_POINT() — 8 bytes of NOPs inside a body, before a decision.
+ *      Same trick, but alters one branch rather than the whole function.
+ *   3. The code cave — free RAM (below), where the new instructions live.
+ *
+ * The 8-byte absolute jump idiom (no offset arithmetic; the Thumb bit must be
+ * set in the target word):
+ *
+ *      DF F8 00 F0    LDR.W PC, [PC, #0]
+ *      <target|1>     .word
+ */
+#define PATCH_ENTRY       __attribute__((patchable_function_entry(4)))
+#define PATCH_PAD_BYTES   8u
+#define PATCH_POINT()     __asm__ volatile("nop\n\tnop\n\tnop\n\tnop" ::: "memory")
+
+/* Code cave: uncommitted RAM for player/scenario-authored instructions,
+ * conventionally divided into slots so several hooks can coexist. */
+#define PATCH_CAVE_BASE   FREE_RAM_BASE
+#define PATCH_CAVE_SIZE   0x1000u
+#define PATCH_SLOT_SIZE   0x80u
+#define PATCH_SLOT_COUNT  (PATCH_CAVE_SIZE / PATCH_SLOT_SIZE)   /* 32 slots */
+#define PATCH_SLOT(n)     (PATCH_CAVE_BASE + (n) * PATCH_SLOT_SIZE)
+
 /* ---------- Freestanding helpers ---------- */
 void *xmemcpy(void *dst, const void *src, uint32_t n);
 void *xmemset(void *dst, int c, uint32_t n);
