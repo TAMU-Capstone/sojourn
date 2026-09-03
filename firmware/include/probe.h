@@ -122,6 +122,7 @@ typedef struct {
 /* ---------- Telemetry (spec §9) ---------- */
 #define TLM_SYNC        0xEB90u
 #define CH_CAM          0x43u
+#define CH_HK           0x60u
 #define CH_AUX          0x5Au
 
 #define MODE_BOOT       0u

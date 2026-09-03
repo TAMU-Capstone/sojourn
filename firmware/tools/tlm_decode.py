@@ -44,7 +44,7 @@ FIRMWARE = Path(__file__).resolve().parent.parent
 MODES = {0: "BOOT", 1: "NOMINAL", 2: "SAFE"}
 FAULTS = {0: "-", 1: "WDG", 2: "HARD", 3: "BADIMG"}
 SENSOR_CH = {0: "MAG", 1: "IMU", 2: "THM", 3: "PWR", 4: "RAD", 5: "STR"}
-CH_CAM, CH_AUX = 0x43, 0x5A
+CH_CAM, CH_HK, CH_AUX = 0x43, 0x60, 0x5A
 
 
 def crc16_ccitt(data: bytes) -> int:
@@ -97,6 +97,15 @@ def decode_frame(hexstr: str):
                 "frame_id": u16(0), "target": u16(2), "exposure_ms": u16(4),
                 "hist_mean": u16(6), "sat_pct": u16(8), "stars": u16(10),
             }
+        elif cid == CH_HK and clen == 8:
+            frame["channels"]["HK"] = {
+                "heater_on": val[0],
+                "shed_count": val[1],
+                "propellant_mg": int.from_bytes(val[2:4], "big"),
+                "momentum": int.from_bytes(val[4:6], "big", signed=True),
+                "rec_fill_pct": val[6],
+                "auth": val[7],
+            }
         elif cid == CH_AUX and clen == 2:
             frame["channels"]["AUX"] = f"0x{int.from_bytes(val, 'big'):04X}"
         else:
@@ -145,6 +154,16 @@ class Printer:
                 ev.append(f"CAM capture #{c2['frame_id']}: target={c2['target']} "
                           f"exp={c2['exposure_ms']}ms mean={c2['hist_mean']} "
                           f"sat={c2['sat_pct']}% stars={c2['stars']}")
+            h1, h2 = p["channels"].get("HK"), f["channels"].get("HK")
+            if h1 and h2:
+                if h2["shed_count"] != h1["shed_count"]:
+                    ev.append(f"POWER LOAD SHED (count {h1['shed_count']} -> {h2['shed_count']})")
+                if h2["auth"] and not h1["auth"]:
+                    ev.append("ENGINEERING COMMAND UNLOCKED (auth)")
+                if h2["heater_on"] != h1["heater_on"]:
+                    ev.append("heater ON" if h2["heater_on"] else "heater OFF")
+                if h2["rec_fill_pct"] >= 100 and h1["rec_fill_pct"] < 100:
+                    ev.append("RECORDER BUFFER FULL")
         self.prev = f
         return ev
 
@@ -168,6 +187,12 @@ class Printer:
         print(head, flush=True)
         if line2:
             print(f"       {line2}", flush=True)
+        hk = f["channels"].get("HK")
+        if hk:
+            print(f"       HK  heater={'on' if hk['heater_on'] else 'off'} | "
+                  f"prop={hk['propellant_mg']}mg | mom={hk['momentum']} | "
+                  f"rec={hk['rec_fill_pct']}% | shed={hk['shed_count']} | "
+                  f"auth={'YES' if hk['auth'] else 'no'}", flush=True)
         for e in ev:
             print(f"     ! {e}", flush=True)
 

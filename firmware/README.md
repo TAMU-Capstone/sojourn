@@ -134,6 +134,7 @@ units as follows:
 | `STR` | quaternion-w × 10000 | value/10000 |
 | `AUX` (0x5A) | u16 | CRC-16 of the last accepted uplink command, hex |
 | `CAM` (0x43) | 6 × u16 | shown as a capture event (below), not on the sensor line |
+| `HK` (0x60) | 8 bytes | auxiliary flight functions — shown on its own `HK` line: heater, propellant, momentum, recorder fill, shed count, auth |
 
 Event lines (`!`) are computed by comparing consecutive frames:
 
@@ -188,8 +189,9 @@ read-only alongside a scripted uplink session against `run-tcp`
     app/sensors.c      sensor register block + SIM-tier physics
     app/camera.c       imaging subsystem: star fields, stats, frame buffer
     app/telemetry.c    downlink frames (TLV channels, CRC16)
-    app/command.c      uplink interpreter: PING/PEEK/POKE/STAT/SAFE/NOOP
-    app/config.c       mission config block + target catalog
+    app/command.c      uplink interpreter: PING/PEEK/POKE/STAT/SAFE/NOOP (+ undocumented AUTH/TRIM)
+    app/flight.c       auxiliary flight functions: heater, power-shed, attitude, recorder
+    app/config.c       mission config block + target catalog + function tunables
     ld/                boot.ld (ROM), app.ld (execute-in-place at 0x20001000)
     tools/             image fixup, symbols.json generator, e2e test
     include/probe.h    the memory-map contract (matches memmap.json)

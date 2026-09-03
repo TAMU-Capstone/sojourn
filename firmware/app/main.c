@@ -29,6 +29,10 @@ static void sched_init(void)
         { task_fault_monitor, TICK_HZ              },
         { task_camera,        TICK_HZ              },
         { task_telemetry,     0 /* from config */  },
+        { task_heater,        TICK_HZ              },
+        { task_power_mgr,     TICK_HZ / 2u         },
+        { task_acs,           TICK_HZ              },
+        { task_recorder,      TICK_HZ              },
     };
     for (uint32_t i = 0; i < sizeof init / sizeof init[0]; i++) {
         task_table[i].handler   = init[i].fn;
@@ -37,7 +41,7 @@ static void sched_init(void)
         task_table[i].countdown = task_table[i].period;
         task_table[i].flags     = TASK_ENABLED;
     }
-    /* Slots 7 and 8 stay empty: {NULL, 0, 0, 0}. */
+    /* Slots 11 and 12 stay empty: {NULL, 0, 0, 0} — injection hook slots. */
 }
 
 static void sched_tick(void)
@@ -61,6 +65,7 @@ void app_main(void)
     config_init();
     sensors_init();
     camera_init();
+    flight_init();
     telemetry_init();
     sched_init();
 

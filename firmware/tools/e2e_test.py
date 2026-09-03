@@ -254,6 +254,30 @@ def main():
         check("overexposure raises SAT_PCT", sat2 > sat1, f"{sat1} -> {sat2}")
         check("overexposure washes out stars", stars2 < stars1, f"{stars1} -> {stars2}")
 
+        print("== 6b. auxiliary flight functions ==")
+        f = next_tlm(p)
+        hk = f["ch"].get(0x60, b"") if f else b""
+        check("housekeeping channel 0x60 present", len(hk) == 8, str(len(hk)))
+        if len(hk) == 8:
+            heater_on = hk[0]
+            shed_count = hk[1]
+            propellant = int.from_bytes(hk[2:4], "big")
+            rec_pct = hk[6]
+            auth = hk[7]
+            check("heater off as built", heater_on == 0, str(heater_on))
+            check("no autonomous load shedding as built", shed_count == 0, str(shed_count))
+            check("propellant loaded (~8000 mg)", 6000 <= propellant <= 8000, str(propellant))
+            check("recorder buffer not overflowing", rec_pct < 100, str(rec_pct))
+            check("engineering commands locked by default", auth == 0, str(auth))
+        check("privileged TRIM rejected without auth", p.cmd("TRIM") == "NAK E07")
+        check("AUTH with wrong key rejected", p.cmd("AUTH 00000000") == "NAK E07")
+        check("AUTH with correct key accepted", p.cmd("AUTH 5A3C96E1") == "ACK AUTH")
+        check("TRIM accepted once authorized", p.cmd("TRIM") == "ACK TRIM")
+        f = next_tlm(p)
+        hk = f["ch"].get(0x60, b"") if f else b""
+        check("auth flag set in telemetry", len(hk) == 8 and hk[7] == 1,
+              str(hk[7] if len(hk) == 8 else None))
+
         print("== 7. brick and recover (watchdog) ==")
         wdg_flags = task_table + 3 * 16 + 12      # entry 3 = wdg_pet, flags @ +12
         r = p.cmd(f"POKE 0x{wdg_flags:08X} 00")

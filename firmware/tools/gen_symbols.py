@@ -15,6 +15,10 @@ KEY_SYMBOLS = [
     "task_cmd", "task_physics", "task_sensor_poll", "task_wdg_pet",
     "task_fault_monitor", "task_camera", "task_telemetry",
     "enter_safe", "cmd_poll_rx",
+    # auxiliary flight functions (flight.c)
+    "flight_init", "task_heater", "task_power_mgr", "task_acs", "task_recorder",
+    "g_heater_on", "g_heater_mw", "g_shed_count", "g_propellant_mg",
+    "g_momentum", "g_desat_count", "g_rec_fill", "g_auth",
     # boot
     "rom_services", "rom_prot", "vectors",
 ]

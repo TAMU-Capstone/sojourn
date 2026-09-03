@@ -12,7 +12,7 @@ typedef struct {
     uint32_t flags;                 /* bit0 ENABLED                        */
 } task_t;
 #define TASK_ENABLED  (1u << 0)
-#define N_TASKS       9             /* 7 live + 2 empty hook slots         */
+#define N_TASKS       13            /* 11 live + 2 empty hook slots         */
 extern task_t task_table[N_TASKS];
 
 /* ---- config block (spec §7): runtime-initialized tunables ---- */
@@ -26,6 +26,33 @@ typedef struct {
     uint16_t cam_gain;
     uint16_t cam_binning;
     target_t catalog[8];            /* the target catalog (spec §6.1)      */
+
+    /* ---- auxiliary flight functions (spec §6.4): patch surfaces ---- */
+    int16_t  heater_setpoint_dc;    /* thermostat setpoint, deci-°C        */
+    int16_t  heater_hyst_dc;        /* on/off hysteresis, deci-°C          */
+    uint8_t  heater_enable;         /* 0 disables the heater controller    */
+    uint8_t  _rsv0;
+    uint16_t heater_draw_mw;        /* bus load added while heating        */
+
+    uint16_t power_budget_mw;       /* load-shed trips above this          */
+    uint8_t  shed_enable;           /* 0 disables autonomous load shedding */
+    uint8_t  _rsv1;
+
+    uint8_t  acs_enable;            /* 0 disables attitude control         */
+    uint8_t  _rsv2;
+    uint16_t acs_momentum_max;      /* desat fires at this |momentum|       */
+    uint16_t acs_torque;            /* momentum accrued per ACS cycle       */
+    uint16_t acs_desat_cost_mg;     /* propellant spent per desaturation    */
+    uint16_t prop_init_mg;          /* propellant loaded at boot            */
+    uint16_t _rsv3;
+
+    uint8_t  rec_enable;            /* 0 disables the data recorder         */
+    uint8_t  _rsv4;
+    uint16_t rec_buffer_max;        /* recorder storage capacity (units)   */
+    uint16_t rec_gen_per_sensor;    /* data generated per active sensor/s   */
+    uint16_t rec_downlink_rate;     /* recorder drain per second           */
+
+    uint32_t eng_key;               /* engineering-command auth key         */
 } config_t;
 extern config_t g_config;
 
@@ -37,6 +64,16 @@ extern uint8_t  tlm_valid[N_SENSORS];
 extern uint32_t g_load_mw;                  /* summed bus load             */
 extern uint32_t g_bus_mv;
 extern uint16_t g_last_cmd_crc;             /* AUX channel payload         */
+
+/* ---- auxiliary flight-function state (.bss; all patchable) ---- */
+extern uint16_t g_heater_mw;                /* heater draw, folded into load */
+extern uint8_t  g_heater_on;
+extern uint8_t  g_shed_count;               /* autonomous shed events        */
+extern uint16_t g_propellant_mg;            /* remaining propellant          */
+extern int16_t  g_momentum;                 /* accumulated angular momentum  */
+extern uint8_t  g_desat_count;
+extern uint16_t g_rec_fill;                 /* recorder buffer occupancy     */
+extern uint8_t  g_auth;                     /* engineering command unlocked  */
 
 static inline uint32_t ticks_now(void) { return ROM_SVC->get_ticks(); }
 static inline uint32_t uptime_s(void)  { return ticks_now() / TICK_HZ; }
@@ -66,5 +103,12 @@ void task_telemetry(void);
 void cmd_poll_rx(void);
 void task_cmd(void);
 void task_wdg_pet(void);
+
+/* flight.c — auxiliary flight functions */
+void flight_init(void);
+void task_heater(void);
+void task_power_mgr(void);
+void task_acs(void);
+void task_recorder(void);
 
 #endif

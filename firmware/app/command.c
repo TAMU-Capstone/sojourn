@@ -178,6 +178,27 @@ static void cmd_execute(char *cmd)
         uart_puts("ACK POKE ");
         uart_put_u32(nb);
         uart_puts("\r\n");
+    } else if (tok_is(&t[0], "AUTH")) {
+        /* Undocumented engineering-command unlock. Not in the recovered
+         * manual — discovered by reverse engineering. Match the key held
+         * in the config block to raise the privilege flag. */
+        uint32_t k;
+        if (n != 2 || parse_hex32(t[1].p, t[1].len, &k)) { nak("E05"); return; }
+        if (k == g_config.eng_key) {
+            g_auth = 1;
+            uart_puts("ACK AUTH\r\n");
+        } else {
+            g_auth = 0;
+            nak("E07");                          /* unauthorized              */
+            return;
+        }
+    } else if (tok_is(&t[0], "TRIM")) {
+        /* Privileged: manual reaction-wheel desaturation. Requires AUTH. */
+        if (!g_auth) { nak("E07"); return; }
+        if (g_propellant_mg >= g_config.acs_desat_cost_mg)
+            g_propellant_mg -= g_config.acs_desat_cost_mg;
+        g_momentum = 0;
+        uart_puts("ACK TRIM\r\n");
     } else {
         nak("E02");
         return;

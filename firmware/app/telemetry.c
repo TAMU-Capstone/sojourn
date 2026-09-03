@@ -54,6 +54,20 @@ void task_telemetry(void)
             o = put16(o, (uint16_t)CAM->sat_pct);
             o = put16(o, (uint16_t)CAM->stars);
         }
+        /* Housekeeping channel 0x60 — auxiliary flight functions (§6.4). */
+        o = put8(o, CH_HK);
+        o = put8(o, 8);
+        o = put8(o, g_heater_on);
+        o = put8(o, g_shed_count);
+        o = put16(o, g_propellant_mg);
+        o = put16(o, (uint16_t)g_momentum);
+        {
+            uint32_t pct = g_config.rec_buffer_max
+                ? (uint32_t)g_rec_fill * 100u / g_config.rec_buffer_max : 0u;
+            o = put8(o, (uint8_t)pct);
+        }
+        o = put8(o, g_auth);
+
         /* AUX channel 0x5A — absent from the recovered manual (R10.2). */
         o = put8(o, CH_AUX);
         o = put8(o, 2);

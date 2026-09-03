@@ -32,4 +32,27 @@ void config_init(void)
         {    0,     0,  0, 0 },   /* 7: (unassigned)                       */
     };
     xmemcpy(g_config.catalog, defaults, sizeof defaults);
+
+    /* Auxiliary flight functions. Defaults are deliberately benign so the
+     * probe is healthy as built; scenarios shift them to create faults. */
+    g_config.heater_setpoint_dc = 100;   /* 10.0 °C — below nominal, so off */
+    g_config.heater_hyst_dc     = 20;    /* ±2.0 °C                          */
+    g_config.heater_enable      = 1;
+    g_config.heater_draw_mw     = 300;
+
+    g_config.power_budget_mw    = 5000;  /* generous — no shedding as built  */
+    g_config.shed_enable        = 1;
+
+    g_config.acs_enable         = 1;
+    g_config.acs_momentum_max   = 1000;
+    g_config.acs_torque         = 4;     /* desat roughly every ~4 min       */
+    g_config.acs_desat_cost_mg  = 50;
+    g_config.prop_init_mg       = 8000;
+
+    g_config.rec_enable         = 1;
+    g_config.rec_buffer_max     = 4096;
+    g_config.rec_gen_per_sensor = 8;     /* 6 sensors -> 48/s generated      */
+    g_config.rec_downlink_rate  = 64;    /* drains faster than it fills      */
+
+    g_config.eng_key            = 0x5A3C96E1u; /* engineering-command key    */
 }

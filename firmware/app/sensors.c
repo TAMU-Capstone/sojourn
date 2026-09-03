@@ -118,8 +118,10 @@ void task_physics(void)
                  + (int32_t)(xorshift32(&prng) & 0x7u) - 4;
     }
 
-    /* Sum the true bus load (every powered device, camera included). */
+    /* Sum the true bus load (every powered device, camera included), plus
+     * the heater draw maintained by task_heater (flight.c). */
     for (int i = 0; i < N_SENSORS; i++) load += SENSORS[i].power_mw;
+    load += g_heater_mw;
     g_load_mw = load;
 
     /* THM: tracks load (deci-degC): idle 18.0 C + 1 C per 200 mW. */

@@ -4,7 +4,7 @@
 |---|---|
 | **Document** | Golden-Image Flight Firmware, Engineering Design Specification |
 | **Project** | "Sojourn" Reverse Engineering Game Platform |
-| **Version** | 0.2 (Draft for sponsor review — adds imaging subsystem, §6.1) |
+| **Version** | 0.3 (Draft for sponsor review — adds auxiliary flight functions, §6.4) |
 | **Date** | August 26, 2026 |
 | **Authors** | Trevor Bakker (sponsor) with Claude |
 | **Audience** | Instructor and capstone team. **This document is not player-facing** — the player-facing *Recovered Mission Operations Manual* is derived from it with deliberate omissions (§14). |
@@ -125,6 +125,19 @@ The camera is deliberately richer than the simple sensors: it is the **parameter
 
 **Image downlink.** Pixels never ride in telemetry — only the stats channel (§9). Recovering an actual image means `PEEK`-dumping the 4 KiB frame buffer, 64 bytes per command, under the uplink budget — the same slow, deliberate pain as a real deep-space image downlink. The ground-station console may reassemble dumped frames into a viewable image (a platform/frontend feature, not a firmware one). Whether to later add a bulk `DUMP` verb is a scenario-difficulty decision (§15).
 
+### 6.4 Auxiliary Flight Functions (scenario surface bank)
+
+Beyond the science payload, the firmware carries a set of **plausible housekeeping functions** whose only job is to be raw material for future scenarios. Each is a task in the scheduler (§7), driven entirely by values in the config block, gated by a simple enable/threshold branch, and observable in the housekeeping telemetry channel (§9, `0x60`). Their defaults keep the probe healthy as built; a scenario shifts one threshold or clears one enable to manufacture the fault it is about. Every one therefore supports all four patch styles — data patch (a threshold), code patch (a comparison/branch), task-table disable, and verification-by-telemetry.
+
+| Function | Task | Behavior | Example scenario hooks |
+|---|---|---|---|
+| **Thermal control** | `task_heater` | Hysteretic thermostat on `THM`; adds `heater_draw_mw` to the bus load while heating | Raise the setpoint so the heater runs and drains the budget; disable it and let the probe run cold |
+| **Power management** | `task_power_mgr` | Sheds the lowest-priority powered subsystem when load exceeds `power_budget_mw` | Lower the budget so it sheds a science sensor mid-mission; the player must raise the budget, disable shedding, or re-order the shed-priority table to keep a sensor alive |
+| **Attitude control** | `task_acs` | Accrues momentum each cycle; desaturates at `acs_momentum_max`, spending propellant; saturates (sticks) when propellant is gone | Stuck reaction wheel; propellant conservation (disable ACS); the privileged `TRIM` command (§8) |
+| **Data recorder** | `task_recorder` | Fills with science data per active sensor, drains at `rec_downlink_rate`; caps at `rec_buffer_max` | Buffer overflow / data loss when downlink is disabled or generation is spiked |
+
+The config block (§7) holds every tunable — setpoints, budgets, rates, momentum limits, propellant load, and the engineering-command key (§8). All of it lives in patchable working memory. Defaults: heater setpoint 10.0 °C (off in nominal warmth), power budget 5000 mW (no shedding), ACS on with 8000 mg propellant, recorder draining faster than it fills.
+
 ## 7. Application Structure — Cooperative Scheduler
 
 The application is a single-threaded cooperative loop over a **task table** in app data (found, not documented):
@@ -136,9 +149,9 @@ The application is a single-threaded cooperative loop over a **task table** in a
 | `countdown` | u32 | Decremented per tick |
 | `flags` | u32 | bit0 `ENABLED` |
 
-Shipped tasks: `sensor_poll` (reads register block per polling config), `telemetry_send` (§9), `cmd_process` (§8), `wdg_pet` (§10), `fault_monitor` (raises `SAFE` mode on persistent sensor faults), `physics_tick` (SIM tier only). The table ships with **two empty slots**. The intended (never required) path for the code-injection objective: write a routine into free RAM, then `POKE` a handler pointer and flags into an empty slot. The main loop validates nothing — a bad pointer hard-faults, the watchdog fires, and the probe recovers (C2).
+Shipped tasks: `cmd_process` (§8), `physics_tick` (SIM tier only), `sensor_poll` (reads register block per polling config), `wdg_pet` (§10), `fault_monitor` (raises `SAFE` mode on persistent sensor faults), `camera` (§6.1), `telemetry_send` (§9), and the four auxiliary flight functions of §6.4 (`heater`, `power_mgr`, `acs`, `recorder`). The table ships with **two empty slots** at the end. The intended (never required) path for the code-injection objective: write a routine into free RAM, then `POKE` a handler pointer and flags into an empty slot. The main loop validates nothing — a bad pointer hard-faults, the watchdog fires, and the probe recovers (C2).
 
-A small **config block** in app data holds tunables: telemetry period, safe-mode thresholds, comms parameters. It is the target surface for "change mission parameters" objectives.
+A **config block** in app data holds every tunable: telemetry period, safe-mode thresholds, camera defaults, the target catalog, all §6.4 function parameters, and the engineering-command key. It is the primary target surface for "change mission parameters" objectives, and it lives entirely in patchable working memory.
 
 ## 8. Uplink Command Protocol (UART, line-based)
 
@@ -152,8 +165,12 @@ Format: `VERB [args] *CCCC` — ASCII, space-delimited, terminated `\n`, where `
 | `STAT` | — | Mode, uptime, reboots, last fault | `ACK STAT <fields>` |
 | `SAFE` | — | Enter safe mode | `ACK SAFE` |
 | `NOOP` | — | Accepted, no action | `ACK NOOP` |
+| `AUTH` | key (hex32) | *Undocumented.* Unlock engineering commands if key matches `eng_key` in config | `ACK AUTH` / `NAK E07` |
+| `TRIM` | — | *Undocumented, privileged.* Manual reaction-wheel desaturation (needs `AUTH`) | `ACK TRIM` / `NAK E07` |
 
-Error replies: `NAK E01` bad CRC · `E02` unknown verb · `E03` unmapped address · `E04` protected region · `E05` bad length/args · `E06` busy. The ACK/NAK layer is deliberately dumb: it confirms *receipt and execution*, never mission effect (charter R1). Transmission delay and uplink budget are enforced by the game daemon, not the probe; the probe answers as fast as it can.
+The last two verbs are **not** in the recovered manual — they are an engineering back-channel the player discovers by reverse engineering the command dispatcher, and the natural seed for a security scenario: recover the `eng_key` from the binary to unlock privileged control, or (defensively) change the key an attacker would use. `NAK E07` is "unauthorized." The scheduler and dispatcher are table-driven, so adding further gated verbs is a content decision, not a rewrite.
+
+Error replies: `NAK E01` bad CRC · `E02` unknown verb · `E03` unmapped address · `E04` protected region · `E05` bad length/args · `E06` busy · `E07` unauthorized. The ACK/NAK layer is deliberately dumb: it confirms *receipt and execution*, never mission effect (charter R1). Transmission delay and uplink budget are enforced by the game daemon, not the probe; the probe answers as fast as it can.
 
 Deliberate omission: there is no `CALL` verb. Executing injected code requires hooking the task table (or patching a call site) — keeping the hardest objective an act of understanding, not a built-in convenience. Adding `CALL` later is a one-line scenario-difficulty decision; the dispatcher is table-driven to make that trivial.
 
@@ -173,6 +190,7 @@ One frame per telemetry period (default 5 s, config block), emitted as a hex-enc
 | BUS_MV / LOAD_MW | 2+2 B | From PWR sensor; LOAD is the honest sum of sensor draw |
 | Channels | TLV × n | One `{ID u8, LEN u8, VALUE}` per sensor that is powered **and** polled; absent otherwise |
 | CAM | TLV | Channel `0x43`: capture metadata — frame id, target index, exposure, `HIST_MEAN`, `SAT_PCT`, `STARS` (present only after at least one capture) |
+| HK | TLV | Channel `0x60` (8 B): auxiliary flight functions (§6.4) — `heater_on` u8, `shed_count` u8, `propellant_mg` u16, `momentum` s16, `rec_fill_pct` u8, `auth` u8. Absent in SAFE mode |
 | AUX | TLV | Channel `0x5A`: undocumented in the player manual (charter R10) — content TBD with scenario (candidate: CRC of last accepted command, closing the feedback loop for attentive players) |
 | CRC | 2 B | CRC-16/CCITT over frame after SYNC |
 
@@ -206,10 +224,11 @@ How the charter's four-step ramp (R9) maps onto this design — each objective h
 | 3. Patch code | `fault_monitor` comparison or branch (stop spurious safe-mode trips); NOP a call site |
 | 4. Inject functionality | Routine into free RAM (`0x2001_D000`) + hook an empty task-table slot or patch a call |
 | Camera missions (reference-scenario extras or scenario #2) | Retarget: `TARGET` register or a catalog entry. Fix exposure: `EXPOSURE_MS`/`GAIN`, verified by `SAT_PCT` falling and `STARS` rising in channel `0x43`. Image downlink: `PEEK`-dump the frame buffer under the uplink budget |
+| Auxiliary-function missions (§6.4, future scenarios) | Thermal: heater setpoint/enable, verified by `heater_on` + `LOAD_MW`. Power: `power_budget_mw`/`shed_enable`/shed-priority table, verified by `shed_count` and a vanishing sensor channel. Attitude: `acs_*` params/enable + `TRIM`, verified by `momentum`/`propellant_mg`. Recorder: `rec_*` params, verified by `rec_fill_pct`. Security: recover `eng_key`, `AUTH`-unlock, or re-key it — verified by the `auth` flag |
 
 ## 14. Documentation Split (spec → player manual)
 
-The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pages lost"): players **get** the command protocol (§8), the telemetry format minus AUX (§9), the coarse memory map (ROM / APP / data regions and the protection rules — not the internal layout), the sensor list with slot IDs, boot/watchdog behavior described operationally, and the camera's basic operating registers (`CCTRL`, `EXPOSURE_MS`, `GAIN`, the stats registers) — presented as a surviving excerpt of the imaging handbook. Players **do not get**: task-table location or format, config-block layout (including the **target catalog's** location and entry format — finding it *is* the retargeting mission), free-RAM region, frame-buffer address (discoverable via `FRAME_ADDR`), the physics/synthesis module, AUX channel, or any symbol file. Everything withheld is discoverable in the binary — that's the game.
+The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pages lost"): players **get** the documented command protocol verbs (§8, `PING`/`PEEK`/`POKE`/`STAT`/`SAFE`/`NOOP` — not `AUTH`/`TRIM`), the telemetry format minus AUX and HK (§9), the coarse memory map (ROM / APP / data regions and the protection rules — not the internal layout), the sensor list with slot IDs, boot/watchdog behavior described operationally, and the camera's basic operating registers (`CCTRL`, `EXPOSURE_MS`, `GAIN`, the stats registers) — presented as a surviving excerpt of the imaging handbook. Players **do not get**: task-table location or format, config-block layout (including the **target catalog** and all §6.4 function parameters, and the **engineering key** — finding these *is* the mission), free-RAM region, frame-buffer address (discoverable via `FRAME_ADDR`), the physics/synthesis module, the `AUTH`/`TRIM` verbs, the AUX and HK channels, or any symbol file. Everything withheld is discoverable in the binary — that's the game. (The manual's Appendix C hints that undocumented channels exist; `0x60` and `0x5A` are exactly those.)
 
 ## 15. Open Questions for Sponsor Review
 
