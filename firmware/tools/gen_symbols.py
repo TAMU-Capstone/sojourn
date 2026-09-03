@@ -22,6 +22,9 @@ KEY_SYMBOLS = [
     # imaging pipeline (imaging.c / scenes.c)
     "image_process", "imaging_init", "cam_lut", "cam_kernel",
     "scene_store", "scene_for_target", "g_cam_egg_pct", "g_dump_enable", "g_call_enable",
+    # comms / downlink bandwidth (comms.c)
+    "task_comms", "comms_budget", "tlm_priority", "g_antenna",
+    "g_hga_ok", "g_tlm_dropped",
     # boot
     "rom_services", "rom_prot", "vectors",
 ]

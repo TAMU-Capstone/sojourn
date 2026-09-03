@@ -9,11 +9,16 @@
  * A sensor's channel is PRESENT only when it was staged by the polling
  * task (powered AND polled) — a disabled sensor VANISHES, it does not
  * read zero.  In SAFE mode only the header is sent.
+ *
+ * Channels are emitted in the order given by tlm_priority[] (comms.c)
+ * and only while they fit the current antenna's payload budget, so a
+ * low-gain fallback squeezes out whatever the priority table ranks last
+ * (spec §6.7). Anything that did not fit is counted in g_tlm_dropped.
  */
 #include "app.h"
 
 static uint16_t frame_cnt;
-static uint8_t  frame[96];
+static uint8_t  frame[128];
 
 uint16_t g_last_cmd_crc;
 
@@ -22,6 +27,72 @@ void telemetry_init(void) { frame_cnt = 0; }
 static uint32_t put8(uint32_t o, uint8_t v)  { frame[o] = v; return o + 1; }
 static uint32_t put16(uint32_t o, uint16_t v){ frame[o] = (uint8_t)(v >> 8); frame[o+1] = (uint8_t)v; return o + 2; }
 static uint32_t put32(uint32_t o, uint32_t v){ o = put16(o, (uint16_t)(v >> 16)); return put16(o, (uint16_t)v); }
+
+/* Bytes this channel would add, or 0 if it has nothing to say. */
+static uint32_t chan_size(uint8_t id)
+{
+    switch (id) {
+    case SLOT_MAG: case SLOT_IMU: case SLOT_THM:
+    case SLOT_PWR: case SLOT_RAD: case SLOT_STR:
+        return tlm_valid[id] ? 6u : 0u;
+    case CH_CAM:
+        return ((SENSORS[SLOT_CAM].ctrl & SCTRL_POWER) && CAM->frame_id) ? 14u : 0u;
+    case CH_HK:    return 10u;
+    case CH_AUX:   return 4u;
+    case CH_COMMS: return 6u;
+    default:       return 0u;
+    }
+}
+
+static uint32_t chan_emit(uint32_t o, uint8_t id)
+{
+    switch (id) {
+    case SLOT_MAG: case SLOT_IMU: case SLOT_THM:
+    case SLOT_PWR: case SLOT_RAD: case SLOT_STR:
+        o = put8(o, id);
+        o = put8(o, 4);
+        return put32(o, (uint32_t)tlm_stage[id]);
+
+    case CH_CAM:
+        o = put8(o, CH_CAM);
+        o = put8(o, 12);
+        o = put16(o, (uint16_t)CAM->frame_id);
+        o = put16(o, (uint16_t)CAM->target);
+        o = put16(o, (uint16_t)CAM->exposure_ms);
+        o = put16(o, (uint16_t)CAM->hist_mean);
+        o = put16(o, (uint16_t)CAM->sat_pct);
+        return put16(o, (uint16_t)CAM->stars);
+
+    case CH_HK:
+        o = put8(o, CH_HK);
+        o = put8(o, 8);
+        o = put8(o, g_heater_on);
+        o = put8(o, g_shed_count);
+        o = put16(o, g_propellant_mg);
+        o = put16(o, (uint16_t)g_momentum);
+        {
+            uint32_t pct = g_config.rec_buffer_max
+                ? (uint32_t)g_rec_fill * 100u / g_config.rec_buffer_max : 0u;
+            o = put8(o, (uint8_t)pct);
+        }
+        return put8(o, g_auth);
+
+    case CH_COMMS:
+        o = put8(o, CH_COMMS);
+        o = put8(o, 4);
+        o = put8(o, g_antenna);
+        o = put8(o, g_tlm_dropped);
+        return put16(o, (uint16_t)comms_budget());
+
+    case CH_AUX:
+        o = put8(o, CH_AUX);
+        o = put8(o, 2);
+        return put16(o, g_last_cmd_crc);
+
+    default:
+        return o;
+    }
+}
 
 PATCH_ENTRY void task_telemetry(void)
 {
@@ -36,42 +107,31 @@ PATCH_ENTRY void task_telemetry(void)
     o = put16(o, (uint16_t)g_load_mw);
 
     if (g_mode != MODE_SAFE) {
-        /* Sensor channels: TLV {slot, 4, DATA} for each staged sensor. */
-        for (uint8_t i = 0; i <= SLOT_STR; i++) {
-            if (!tlm_valid[i]) continue;
-            o = put8(o, i);
-            o = put8(o, 4);
-            o = put32(o, (uint32_t)tlm_stage[i]);
-        }
-        /* Camera metadata channel 0x43 (after first capture). */
-        if ((SENSORS[SLOT_CAM].ctrl & SCTRL_POWER) && CAM->frame_id > 0) {
-            o = put8(o, CH_CAM);
-            o = put8(o, 12);
-            o = put16(o, (uint16_t)CAM->frame_id);
-            o = put16(o, (uint16_t)CAM->target);
-            o = put16(o, (uint16_t)CAM->exposure_ms);
-            o = put16(o, (uint16_t)CAM->hist_mean);
-            o = put16(o, (uint16_t)CAM->sat_pct);
-            o = put16(o, (uint16_t)CAM->stars);
-        }
-        /* Housekeeping channel 0x60 — auxiliary flight functions (§6.4). */
-        o = put8(o, CH_HK);
-        o = put8(o, 8);
-        o = put8(o, g_heater_on);
-        o = put8(o, g_shed_count);
-        o = put16(o, g_propellant_mg);
-        o = put16(o, (uint16_t)g_momentum);
-        {
-            uint32_t pct = g_config.rec_buffer_max
-                ? (uint32_t)g_rec_fill * 100u / g_config.rec_buffer_max : 0u;
-            o = put8(o, (uint8_t)pct);
-        }
-        o = put8(o, g_auth);
+        /* Emit in priority order while the antenna's budget lasts. What
+         * does not fit is dropped, not truncated — a partial channel
+         * would corrupt the frame. */
+        uint32_t budget = comms_budget();
+        uint32_t used = o - 3u;
+        uint32_t dropped = 0;
+        uint8_t  fits[N_TLM_PRIORITY];
 
-        /* AUX channel 0x5A — absent from the recovered manual (R10.2). */
-        o = put8(o, CH_AUX);
-        o = put8(o, 2);
-        o = put16(o, g_last_cmd_crc);
+        PATCH_POINT();      /* room to detour the bandwidth triage */
+
+        /* Decide first, emit second: the COMMS channel reports the drop
+         * count for THIS frame, and it is emitted before the loop that
+         * would otherwise compute it. */
+        for (uint32_t i = 0; i < N_TLM_PRIORITY; i++) {
+            uint32_t sz = chan_size(tlm_priority[i]);
+            if (sz == 0u) { fits[i] = 0; continue; }
+            if (used + sz > budget) { fits[i] = 0; dropped++; continue; }
+            used += sz;
+            fits[i] = 1;
+        }
+        g_tlm_dropped = (uint8_t)dropped;
+
+        for (uint32_t i = 0; i < N_TLM_PRIORITY; i++)
+            if (fits[i])
+                o = chan_emit(o, tlm_priority[i]);
     }
 
     uint32_t paylen = o - 3;

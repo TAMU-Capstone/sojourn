@@ -35,7 +35,7 @@ void camera_init(void)
     CAM->gain        = g_config.cam_gain;
     CAM->binning     = g_config.cam_binning;
     CAM->frame_addr  = FRAMEBUF_BASE;
-    CAM->frame_len   = FRAMEBUF_SIZE;
+    CAM->frame_len   = SCENE_PIXELS;
     CAM->cstat       = CSTAT_READY;
     imaging_init();
     cam_roll = 0x4D1A5A17u;

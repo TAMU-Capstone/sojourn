@@ -42,7 +42,7 @@ typically already present).
     make gdb        # attach the cross-gdb it finds (arm-none-eabi-gdb or gdb-multiarch)
     make tlm        # boot the probe and stream DECODED telemetry (see below)
     make run-tcp    # boot with the UART on tcp:5599 (one client at a time)
-    make test       # 62-check end-to-end suite
+    make test       # 81-check end-to-end suite
 
 Overridable: `make CROSS=... QEMU_BIN=... PYTHON=...` if your tools have
 nonstandard names or live off PATH.
@@ -134,7 +134,8 @@ units as follows:
 | `STR` | quaternion-w × 10000 | value/10000 |
 | `AUX` (0x5A) | u16 | CRC-16 of the last accepted uplink command, hex |
 | `CAM` (0x43) | 6 × u16 | shown as a capture event (below), not on the sensor line |
-| `HK` (0x60) | 8 bytes | auxiliary flight functions — shown on its own `HK` line: heater, propellant, momentum, recorder fill, shed count, auth |
+| `HK` (0x60) | 8 bytes | auxiliary flight functions — own `HK` line: heater, propellant, momentum, recorder fill, shed count, auth |
+| `COMMS` (0x61) | 4 bytes | downlink state — own `LINK` line: antenna, payload budget, channels dropped |
 
 Event lines (`!`) are computed by comparing consecutive frames:
 
@@ -144,6 +145,8 @@ Event lines (`!`) are computed by comparing consecutive frames:
 | `PROBE REBOOTED (n -> m, fault=...)` | Reboot counter changed; fault code says why. A brick + watchdog recovery shows as `fault=WDG`. |
 | `mode A -> B` | Mode transition (e.g. entering `SAFE`). |
 | `CAM capture #id: target= exp= mean= sat= stars=` | `frame_id` advanced: a completed capture with its statistics — `sat`/`stars` are the exposure-objective signals (overexposure: `sat` up, `stars` down). |
+| `ANTENNA HGA -> LGA` | The probe fell back to the low-gain antenna; the payload budget collapses and channels start dropping. |
+| `DOWNLINK SATURATED: n channels dropped` | The frame no longer fits the current antenna's budget. |
 
 ### JSON mode
 
@@ -179,7 +182,7 @@ read-only alongside a scripted uplink session against `run-tcp`
 
 ## Verify
 
-    make test    # 62 checks: framing, protocol, protection, objective-1
+    make test    # 81 checks: framing, protocol, protection, objective-1
                  # flow, camera + imaging pipeline, flight functions,
                  # trampoline patching, brick + watchdog recovery
 
@@ -192,6 +195,7 @@ read-only alongside a scripted uplink session against `run-tcp`
     app/telemetry.c    downlink frames (TLV channels, CRC16)
     app/command.c      uplink interpreter: PING/PEEK/POKE/STAT/SAFE/NOOP (+ undocumented AUTH/TRIM)
     app/flight.c       auxiliary flight functions: heater, power-shed, attitude, recorder
+    app/comms.c        antenna state, downlink budget, channel priority
     app/imaging.c      image pipeline: transfer LUT, convolution kernel, filters
     app/scenes.c       GENERATED detector image store -> ROM, not the app image
     assets/            NASA source imagery for the scenes (+ credits)
@@ -203,10 +207,10 @@ read-only alongside a scripted uplink session against `run-tcp`
 
 ## Camera images and the processing pipeline
 
-Each catalog target selects one of four stored 64×64 grayscale scenes: a
-survey star field, **1 Ceres**, **Saturn's north polar vortex**, and a
-hidden fourth — all three photographs being NASA/JPL public-domain
-imagery kept in `assets/`. The
+Each catalog target selects one of five stored 96×96 grayscale scenes: a
+survey star field, **Pluto**, **Nix** and **Arrokoth** (New Horizons), and
+a hidden fifth — all photographs being NASA public-domain imagery kept in
+`assets/`. The
 camera reads the scene, runs it through a pipeline, and writes the result
 into the frame buffer — which is what the ground downlinks. Pixels never
 ride in telemetry, only capture statistics.
@@ -219,7 +223,7 @@ address. (Moving them cut it from 21,532 to 5,191 bytes.) A player can
 still recover the source, but only by finding the address and
 `PEEK`-dumping ROM, 64 commands per scene, against the uplink budget.
 
-**Easter egg.** Scene 3 is referenced by no catalog entry, so it cannot
+**Easter egg.** Scene 4 is referenced by no catalog entry, so it cannot
 be commanded — but roughly 1 capture in 100 returns it anyway: a Cassini
 image of Mimas, the moon whose Herschel crater makes it look like a
 certain battle station. The roll advances from a fixed seed, not the clock, so a

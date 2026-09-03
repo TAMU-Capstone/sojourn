@@ -23,9 +23,9 @@
 #define SENS_BASE       0x2001E000u          /* sensor register block        */
 #define CAM_BASE        0x2001E100u          /* camera extended registers    */
 #define STACK_TOP       0x20020000u
-#define FRAMEBUF_BASE   0x20020000u          /* 64x64x8bit camera frame      */
-#define FRAMEBUF_SIZE   0x1000u
-#define SRAM_END        0x20021000u
+#define FRAMEBUF_BASE   0x20020000u          /* 96x96x8bit camera frame      */
+#define FRAMEBUF_SIZE   0x2400u              /* 9216 bytes                   */
+#define SRAM_END        0x20022400u
 
 /* Writable window for POKE (everything else in SRAM is protected) */
 #define POKE_LOW        APP_BASE
@@ -123,7 +123,13 @@ typedef struct {
 #define TLM_SYNC        0xEB90u
 #define CH_CAM          0x43u
 #define CH_HK           0x60u
+#define CH_COMMS        0x61u
 #define CH_AUX          0x5Au
+
+/* Downlink antenna (spec §6.7) */
+#define ANT_HGA         0u
+#define ANT_LGA         1u
+#define N_TLM_PRIORITY  10u
 
 #define MODE_BOOT       0u
 #define MODE_NOMINAL    1u
@@ -134,8 +140,8 @@ typedef struct {
  * application image, so the binary the player analyses carries no pixels —
  * only the code that reads them. The camera writes its processed output
  * into the frame buffer; that captured raw is what the ground downlinks. */
-#define SCENE_W          64u
-#define SCENE_H          64u
+#define SCENE_W          96u
+#define SCENE_H          96u
 #define SCENE_PIXELS     (SCENE_W * SCENE_H)
 #define SCENE_COUNT      5u
 #define SCENE_STORE_BASE 0x00024000u        /* just past the golden image  */

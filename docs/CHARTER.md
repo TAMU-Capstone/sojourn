@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Document** | Project Charter and Requirements Specification |
-| **Version** | 0.2 (Draft — requirements rewritten in SHALL form with verification methods) |
+| **Version** | 0.3 (Draft — uplink budget meters writes only; new R4.3 read allowance) |
 | **Date** | August 26, 2026 |
 | **Sponsor** | Trevor Bakker (Instructor) |
 | **Team** | 5–6 Computer Science students, one semester |
@@ -116,13 +116,16 @@ The assertion language is the platform's core abstraction. It must be expressive
 | R3.2 | T | Within 2 s of an objective entering a partial state, the console SHALL display that state's scenario-authored hint text. | D |
 | R3.3 | T | An objective that reaches complete SHALL remain complete for the rest of the scenario run, and the completion SHALL be persisted to the save volume within 5 s. | T |
 | R4.1 | T | The daemon SHALL delay each uplink by the scenario-configured one-way transmission delay, configurable from 0 to 3600 s in 1 s increments. | T |
-| R4.2 | T | The daemon SHALL enforce the scenario-configured uplink budget (1–1000 commands per window; window length 10–86 400 s) and SHALL reject each over-budget uplink with a distinct console error without forwarding it to the probe. | T |
+| R4.2 | T | The daemon SHALL meter **only state-changing uplinks** (`POKE`, `CALL`, `TRIM`, `SAFE`) against the scenario-configured command budget (1–1000 commands per window; window length 10–86 400 s), and SHALL reject each over-budget command with a distinct console error without forwarding it to the probe. | T |
+| R4.3 | T | Read-only uplinks (`PING`, `STAT`, `PEEK`, `DUMP`, `AUTH`) SHALL NOT consume the command budget. Where a scenario limits observation it SHALL do so through a separate read allowance, configurable 1–10 000 commands per window. | T |
 | R5.1 | T | If the application fails to reload the watchdog for 3 s (±1 tick at 100 Hz), the firmware SHALL reset and restore the golden image. | T |
 | R5.2 | T | Within 10 s of a watchdog reset, downlink telemetry SHALL resume with the reboot counter incremented by exactly 1 and reported uptime under 10 s. | T |
 | R5.3 | T | A POKE addressed to any protected region SHALL return `NAK E04` and SHALL leave all probe memory unmodified. | T |
 | R6.1 | O | The console SHALL retain and recall at least the most recent 500 uplink commands per player across sessions. | D |
 | R6.2 | O | The console SHALL transmit a player-supplied batch file of up to 100 commands in file order, subject to the same delay and budget enforcement as typed commands. | D |
 | R7 | S | A player-triggered scenario reset, if provided, SHALL preserve the command log and no other player state. | D |
+
+> **Why reads and writes are metered separately.** A budget tight enough to make each patch feel consequential (tens of commands) cannot also accommodate recovering an image, which costs 144 `PEEK`s at 96×96 — or 18 with bulk downlink enabled. The budget exists to make *decisions* costly, not to punish observation, and real missions meter command uplink and downlink bandwidth as different resources. Metering only writes lets a scenario run a genuinely tight patch budget and a full image downlink at the same time without either distorting the other.
 
 ### 6.2 Reverse Engineering Surface
 

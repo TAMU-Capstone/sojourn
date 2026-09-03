@@ -226,6 +226,7 @@ had the effect you intended.
 | `0x05` | Star tracker (STR) | int32 | Attitude quaternion term ×10000 |
 | `0x43` | Camera (CAM) | 12 bytes | Capture metadata (§6.3) |
 | `0x60` | Housekeeping (HK) | 8 bytes | Spacecraft subsystem state (§5.4) |
+| `0x61` | Communications (COMMS) | 4 bytes | Downlink link state (§5.5) |
 
 > In SAFE mode the probe transmits the header only, with no data
 > channels, to conserve power.
@@ -248,6 +249,29 @@ Momentum accumulates as the probe is pushed by its environment and is
 discharged by the attitude-control system, which spends propellant to do
 it. If propellant runs out, momentum will climb and stay high. Recorder
 occupancy at 100 % means science data is being lost.
+
+### 5.5 Communications Channel (0x61)
+
+Four bytes describing the state of the downlink itself:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | Antenna in use: `0` = high gain, `1` = low gain |
+| 1 | 1 | Channels dropped from this frame |
+| 2 | 2 | Payload budget, bytes |
+
+Sojourn carries two antennas. The **high gain** is narrow-beam and
+carries a complete telemetry frame. The **low gain** is a wide-beam
+backup with a far smaller budget — smaller than a full frame — so when
+the probe is using it, the flight software transmits what it considers
+most important and **drops the rest entirely**. A dropped channel is
+absent, not truncated or zeroed.
+
+> ⚠ If you see the antenna field change to `1`, the probe has decided the
+> high-gain antenna has failed and has fallen back. Science channels will
+> begin disappearing. The flight software's opinion of what is worth the
+> remaining bandwidth is a table in working memory, and the decision it
+> made is not necessarily the one you would make.
 
 > ▓▓▓ **APPENDIX C — RESERVED / DIAGNOSTIC CHANNELS** ▓▓▓
 > ▓▓▓ *appendix missing* ▓▓▓
@@ -298,7 +322,7 @@ the working program, not these registers.)
 
 ### 6.2 Imaging Camera
 
-The camera captures a 64×64, 8-bit grayscale frame of a commanded target.
+The camera captures a 96×96, 8-bit grayscale frame of a commanded target.
 Its control registers (base address in the missing Table 4-2) are:
 
 | Offset | Register | Meaning |
@@ -352,8 +376,8 @@ frame. All fields are 16-bit, big-endian:
 **Recovering an image.** The pixel data is never downlinked in
 telemetry — only these statistics. To retrieve an actual frame, read the
 frame store directly with `PEEK`, using the address in `FRAME_ADDR` and
-the size in `FRAME_LEN` (4096 bytes), 64 bytes per command. Reassemble
-the bytes on the ground into a 64×64 image. This is slow and deliberate;
+the size in `FRAME_LEN` (9216 bytes), 64 bytes per command. Reassemble
+the bytes on the ground into a 96×96 image. This is slow and deliberate;
 budget your uplink accordingly.
 
 ---

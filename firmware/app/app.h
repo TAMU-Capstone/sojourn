@@ -12,7 +12,7 @@ typedef struct {
     uint32_t flags;                 /* bit0 ENABLED                        */
 } task_t;
 #define TASK_ENABLED  (1u << 0)
-#define N_TASKS       13            /* 11 live + 2 empty hook slots         */
+#define N_TASKS       14            /* 12 live + 2 empty hook slots         */
 extern task_t task_table[N_TASKS];
 
 /* ---- config block (spec §7): runtime-initialized tunables ---- */
@@ -59,6 +59,14 @@ typedef struct {
     uint8_t  cam_filter;            /* imaging pipeline stages (FILT_*)     */
     uint8_t  cam_kdiv;              /* convolution divisor                  */
     uint16_t _rsv5;
+
+    /* ---- downlink comms (spec §6.7) ---- */
+    uint8_t  comms_enable;          /* 0 freezes antenna management         */
+    uint8_t  _rsv6;
+    uint16_t hga_max_payload;       /* payload bytes the high gain carries  */
+    uint16_t lga_max_payload;       /* ... and the low gain (the squeeze)   */
+    uint16_t _rsv7;
+    uint32_t hga_fail_after_s;      /* scripted HGA failure; 0 = never      */
 
     uint32_t eng_key;               /* engineering-command auth key         */
 } config_t;
@@ -127,6 +135,15 @@ void telemetry_init(void);
 void task_telemetry(void);
 extern uint8_t g_dump_enable;   /* bulk downlink gate (ships 0) */
 extern uint8_t g_call_enable;   /* one-shot execution gate (ships 0) */
+
+/* ---- comms.c: antenna and downlink bandwidth ---- */
+extern uint8_t g_antenna;                    /* ANT_HGA / ANT_LGA         */
+extern uint8_t g_hga_ok;                     /* high-gain health verdict  */
+extern uint8_t g_tlm_dropped;                /* channels squeezed out     */
+extern uint8_t tlm_priority[N_TLM_PRIORITY]; /* emission order (patchable)*/
+void     comms_init(void);
+uint32_t comms_budget(void);
+void     task_comms(void);
 void cmd_poll_rx(void);
 void task_cmd(void);
 void task_wdg_pet(void);

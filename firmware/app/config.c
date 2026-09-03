@@ -59,5 +59,12 @@ void config_init(void)
     g_config.cam_filter         = FILT_LUT;
     g_config.cam_kdiv           = 1;
 
+    /* Downlink comms. As built the high gain works and carries the whole
+     * frame; a scenario schedules the failure and the squeeze begins. */
+    g_config.comms_enable       = 1;
+    g_config.hga_max_payload    = 96;    /* whole frame fits                */
+    g_config.lga_max_payload    = 40;    /* forces triage                   */
+    g_config.hga_fail_after_s   = 0;     /* 0 = never (healthy as built)    */
+
     g_config.eng_key            = 0x5A3C96E1u; /* engineering-command key    */
 }

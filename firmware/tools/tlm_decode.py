@@ -44,7 +44,8 @@ FIRMWARE = Path(__file__).resolve().parent.parent
 MODES = {0: "BOOT", 1: "NOMINAL", 2: "SAFE"}
 FAULTS = {0: "-", 1: "WDG", 2: "HARD", 3: "BADIMG"}
 SENSOR_CH = {0: "MAG", 1: "IMU", 2: "THM", 3: "PWR", 4: "RAD", 5: "STR"}
-CH_CAM, CH_HK, CH_AUX = 0x43, 0x60, 0x5A
+CH_CAM, CH_HK, CH_COMMS, CH_AUX = 0x43, 0x60, 0x61, 0x5A
+ANTENNA = {0: 'HGA', 1: 'LGA'}
 
 
 def crc16_ccitt(data: bytes) -> int:
@@ -106,6 +107,12 @@ def decode_frame(hexstr: str):
                 "rec_fill_pct": val[6],
                 "auth": val[7],
             }
+        elif cid == CH_COMMS and clen == 4:
+            frame["channels"]["COMMS"] = {
+                "antenna": ANTENNA.get(val[0], f"?{val[0]}"),
+                "dropped": val[1],
+                "budget": int.from_bytes(val[2:4], "big"),
+            }
         elif cid == CH_AUX and clen == 2:
             frame["channels"]["AUX"] = f"0x{int.from_bytes(val, 'big'):04X}"
         else:
@@ -154,6 +161,15 @@ class Printer:
                 ev.append(f"CAM capture #{c2['frame_id']}: target={c2['target']} "
                           f"exp={c2['exposure_ms']}ms mean={c2['hist_mean']} "
                           f"sat={c2['sat_pct']}% stars={c2['stars']}")
+            k1, k2 = p["channels"].get("COMMS"), f["channels"].get("COMMS")
+            if k1 and k2:
+                if k2["antenna"] != k1["antenna"]:
+                    ev.append(f"ANTENNA {k1['antenna']} -> {k2['antenna']} "
+                              f"(budget {k1['budget']} -> {k2['budget']} bytes)")
+                if k2["dropped"] and not k1["dropped"]:
+                    ev.append(f"DOWNLINK SATURATED: {k2['dropped']} channels dropped")
+                elif k2["dropped"] != k1["dropped"]:
+                    ev.append(f"dropped channels {k1['dropped']} -> {k2['dropped']}")
             h1, h2 = p["channels"].get("HK"), f["channels"].get("HK")
             if h1 and h2:
                 if h2["shed_count"] != h1["shed_count"]:
@@ -187,6 +203,10 @@ class Printer:
         print(head, flush=True)
         if line2:
             print(f"       {line2}", flush=True)
+        cm = f["channels"].get("COMMS")
+        if cm:
+            print(f"       LINK {cm['antenna']} | budget={cm['budget']}B | "
+                  f"dropped={cm['dropped']}", flush=True)
         hk = f["channels"].get("HK")
         if hk:
             print(f"       HK  heater={'on' if hk['heater_on'] else 'off'} | "

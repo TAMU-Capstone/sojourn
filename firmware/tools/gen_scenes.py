@@ -20,7 +20,7 @@ from png import read_gray_png                                   # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
-W = H = 64
+W = H = 96          # must match SCENE_W/SCENE_H in include/probe.h
 N = W * H
 
 
@@ -53,16 +53,25 @@ def star(img, cx, cy, peak, spread=1.0):
 
 
 def imported(name):
-    """Load a NASA source image from assets/, resampled to 64x64."""
+    """Load a source image from assets/, bilinearly resampled to WxH."""
     path = ASSETS / name
     w, h, px = read_gray_png(path)
     if (w, h) == (W, H):
         return list(px)
-    out = [0] * N                                   # nearest-neighbour
+    out = [0] * N
     for y in range(H):
-        sy = y * h // H
+        fy = (y + 0.5) * h / H - 0.5
+        y0 = int(fy) if fy >= 0 else 0
+        y1 = min(y0 + 1, h - 1)
+        wy = fy - y0 if fy >= 0 else 0.0
         for x in range(W):
-            out[y * W + x] = px[sy * w + (x * w // W)]
+            fx = (x + 0.5) * w / W - 0.5
+            x0 = int(fx) if fx >= 0 else 0
+            x1 = min(x0 + 1, w - 1)
+            wx = fx - x0 if fx >= 0 else 0.0
+            a = px[y0 * w + x0] * (1 - wx) + px[y0 * w + x1] * wx
+            b = px[y1 * w + x0] * (1 - wx) + px[y1 * w + x1] * wx
+            out[y * W + x] = max(0, min(255, int(a * (1 - wy) + b * wy + 0.5)))
     return out
 
 

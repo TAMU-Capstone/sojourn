@@ -33,7 +33,6 @@ CAM_TARGET = CAM_BASE + 0x08
 CAM_FRAME_ID = CAM_BASE + 0x14
 CAM_FRAME_ADDR = CAM_BASE + 0x18
 CAM_FRAME_LEN = CAM_BASE + 0x1C
-W = H = 64
 
 KERNELS = {                       # name: (9 coefficients, divisor)
     "blur":      ([1, 1, 1, 1, 1, 1, 1, 1, 1], 9),
@@ -208,9 +207,13 @@ def main():
             sys.exit("capture did not complete")
 
         addr = link.u32(CAM_FRAME_ADDR)
-        size = min(link.u32(CAM_FRAME_LEN), W * H)
-        print(f"frame {link.u32(CAM_FRAME_ID)} at 0x{addr:08X}, {size} bytes "
-              f"-> {size // 64} PEEK commands")
+        size = link.u32(CAM_FRAME_LEN)
+        side = int(round(size ** 0.5))          # the probe reports its own
+        if side * side != size:                  # frame length; square frames
+            sys.exit(f"frame length {size} is not a square image")
+        W = H = side
+        print(f"frame {link.u32(CAM_FRAME_ID)} at 0x{addr:08X}, "
+              f"{W}x{H} = {size} bytes -> {-(-size // 64)} PEEK commands")
 
         px = bytearray()
         for off in range(0, size, 64):

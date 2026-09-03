@@ -430,6 +430,59 @@ def main():
         p.cmd(f"POKE 0x{call_gate:08X} 00")
         check("CALL disabled again", p.cmd(f"CALL 0x{slot1:08X}") == "NAK E08")
 
+        print("== 6e. comms: high-gain failure forces bandwidth triage ==")
+        hga_ok = int(symbols["g_hga_ok"], 16)
+        prio = int(symbols["tlm_priority"], 16)
+        f = next_tlm(p)
+        cm = f["ch"].get(0x61, b"") if f else b""
+        check("COMMS channel present", len(cm) == 4, str(len(cm)))
+        check("high gain selected as built", len(cm) == 4 and cm[0] == 0, str(cm))
+        check("nothing dropped on the high gain", len(cm) == 4 and cm[1] == 0, str(cm))
+        hga_sensors = {k for k in range(6) if k in f["ch"]}
+
+        p.cmd(f"POKE 0x{hga_ok:08X} 00")          # declare the HGA failed
+        for _ in range(3):
+            f = next_tlm(p)
+            cm = f["ch"].get(0x61, b"") if f else b""
+            if len(cm) == 4 and cm[0] == 1:
+                break
+        check("probe fell back to the low gain", len(cm) == 4 and cm[0] == 1, str(cm))
+        check("bandwidth budget dropped",
+              len(cm) == 4 and int.from_bytes(cm[2:4], "big") < 96,
+              str(cm))
+        check("channels are being dropped", len(cm) == 4 and cm[1] > 0, str(cm))
+        lga_sensors = {k for k in range(6) if k in f["ch"]}
+        check("science channels squeezed out", len(lga_sensors) < len(hga_sensors),
+              f"{sorted(hga_sensors)} -> {sorted(lga_sensors)}")
+
+        # The Galileo decision: re-rank the priority table so a sacrificed
+        # channel survives instead of one that currently does. Swap the two
+        # entries rather than overwriting, so no channel is lost from the list.
+        squeezed = sorted(hga_sensors - lga_sensors)
+        surviving = sorted(lga_sensors)
+        if squeezed and surviving:
+            table = list(bytes.fromhex(p.cmd(f"PEEK 0x{prio:08X} 10").split()[-1]))
+            i_lost, i_kept = table.index(squeezed[0]), table.index(surviving[0])
+            p.cmd(f"POKE 0x{prio + i_lost:08X} {surviving[0]:02X}")
+            p.cmd(f"POKE 0x{prio + i_kept:08X} {squeezed[0]:02X}")
+            next_tlm(p); f = next_tlm(p)
+            check("re-ranking the priority table swaps which data survives",
+                  squeezed[0] in f["ch"] and surviving[0] not in f["ch"],
+                  f"promoted {squeezed[0]}, demoted {surviving[0]} -> "
+                  f"{sorted(k for k in range(6) if k in f['ch'])}")
+        else:
+            check("re-ranking the priority table swaps which data survives",
+                  False, "nothing was squeezed out to promote")
+
+        p.cmd(f"POKE 0x{hga_ok:08X} 01")          # clear the verdict
+        for _ in range(4):
+            f = next_tlm(p)
+            cm = f["ch"].get(0x61, b"") if f else b""
+            if len(cm) == 4 and cm[0] == 0:
+                break
+        check("high gain recovers when the verdict clears",
+              len(cm) == 4 and cm[0] == 0, str(cm))
+
         print("== 7. brick and recover (watchdog) ==")
         wdg_flags = task_table + 3 * 16 + 12      # entry 3 = wdg_pet, flags @ +12
         r = p.cmd(f"POKE 0x{wdg_flags:08X} 00")

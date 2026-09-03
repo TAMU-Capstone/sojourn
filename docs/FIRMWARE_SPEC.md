@@ -4,7 +4,7 @@
 |---|---|
 | **Document** | Golden-Image Flight Firmware, Engineering Design Specification |
 | **Project** | "Sojourn" Reverse Engineering Game Platform |
-| **Version** | 0.8 (Draft — gated DUMP and CALL; Kuiper Belt target set; §15 mostly closed) |
+| **Version** | 0.9 (Draft — comms/antenna subsystem; 96×96 scenes; §15 down to one open item) |
 | **Date** | August 26, 2026 |
 | **Authors** | Trevor Bakker (sponsor) with Claude |
 | **Audience** | Instructor and capstone team. **This document is not player-facing** — the player-facing *Recovered Mission Operations Manual* is derived from it with deliberate omissions (§14). |
@@ -51,7 +51,7 @@ Logical layout, enforced by linker scripts and by the `POKE` handler's protectio
 | ROM | `0x0000_0000 – 0x0000_03FF` | 1 KiB | Boot vector table | refused (`E04 PROT`) |
 | ROM | `0x0000_0400 – 0x0000_3FFF` | 15 KiB | Bootloader + ROM services (§5) | refused |
 | ROM | `0x0000_4000 – 0x0002_3FFF` | 128 KiB | **Golden application image** + CRC32 trailer | refused |
-| ROM | `0x0002_4000 – 0x0002_BFFF` | 32 KiB | **Detector image store** — 5 × 64×64 stored scenes (20 KiB used), outside the app image so the player's binary holds no pixels (§6.4a) | refused |
+| ROM | `0x0002_4000 – 0x0002_FFFF` | 48 KiB | **Detector image store** — 5 × 96×96 stored scenes (45 KiB used), outside the app image so the player's binary holds no pixels (§6.4a) | refused |
 | SRAM | `0x2000_0000 – 0x2000_00FF` | 256 B | NOINIT persistent block: reboot counter, last-fault code (survives watchdog reset) | refused |
 | SRAM | `0x2000_0100 – 0x2000_0FFF` | 3.75 KiB | Bootloader/system data, watchdog counter | refused |
 | SRAM | `0x2000_1000 – 0x2001_8FFF` | 96 KiB | **APP region**: application code + rodata, copied from golden image at boot, executes in place | writable |
@@ -59,7 +59,7 @@ Logical layout, enforced by linker scripts and by the `POKE` handler's protectio
 | SRAM | `0x2001_D000 – 0x2001_DFFF` | 4 KiB | **Code cave** — undocumented landing zone for injected instructions; 32 × 128 B slots (§6.5) | writable |
 | SRAM | `0x2001_E000 – 0x2001_EFFF` | 4 KiB | **Sensor register block** (SIM tier, §6) | writable* |
 | SRAM | `0x2001_F000 – 0x2001_FFFF` | 4 KiB | Stacks (main + handler) | writable |
-| SRAM | `0x2002_0000 – 0x2002_0FFF` | 4 KiB | **CAM frame buffer** — most recent image, raw 64×64 8-bit grayscale (§6.1) | writable |
+| SRAM | `0x2002_0000 – 0x2002_23FF` | 9 KiB | **CAM frame buffer** — most recent image, raw 96×96 8-bit grayscale (§6.1) | writable |
 
 *Writable by design: poking a sensor's CTRL register is a legitimate solution path (C5). In the harness tier this block becomes true MMIO at the same addresses.
 
@@ -141,7 +141,7 @@ The config block (§7) holds every tunable — setpoints, budgets, rates, moment
 
 ### 6.4a Stored Scenes and the Imaging Pipeline
 
-The camera does not synthesize pixels. Each catalog target carries a **scene index** selecting one of `SCENE_COUNT` stored 64×64 8-bit grayscale images. The camera reads that scene, runs it through the pipeline below, and **writes the result into the frame buffer** — which is what the ground downlinks.
+The camera does not synthesize pixels. Each catalog target carries a **scene index** selecting one of `SCENE_COUNT` stored 96×96 8-bit grayscale images. The camera reads that scene, runs it through the pipeline below, and **writes the result into the frame buffer** — which is what the ground downlinks.
 
 **Where the source images live — and why not in the player's binary.** The scenes are *not* part of the application. They occupy a **detector image store** in ROM at a fixed address (`0x0002_4000`) deliberately placed **outside the golden application image**, and the app reaches them through `SCENE_AT(i)`. The player receives `probe_app.bin`, which therefore contains **no pixels at all** — only the code that reads an address. Verified by the build: moving the scenes cut the player binary from 21,532 to 5,191 bytes, and a byte-search for scene data in it fails.
 
@@ -173,6 +173,26 @@ The LUT stage is **live but invisible as built**: it ships as an identity ramp, 
 Capture statistics are computed from the written frame, not the source. `STARS` counts bright *unclipped local maxima*, so it measures genuine point sources: an overexposed frame is a flat bright field and scores near zero, while a merely bright frame does not inflate the count.
 
 **Recovering the picture.** Pixels never ride in telemetry. `tools/img_recover.py` drives the documented downlink — `PEEK` the frame buffer 64 bytes at a time, 64 commands for a full frame — and writes a PNG with a dependency-free encoder (`tools/png.py`, stdlib only). Every action it takes is an ordinary uplink a player could type by hand, including `--invert`, `--threshold`, `--filter blur|sharpen|edge` and `--target N`.
+
+### 6.4b Downlink Comms: Antenna Failure and Bandwidth Triage
+
+Real precedent: **Galileo's** high-gain antenna failed to unfurl in 1991, and the mission was saved by reprogramming the spacecraft in flight to run science through the low-gain antenna — new compression, and hard decisions about which data was worth the bandwidth. `comms.c` is that scenario in miniature.
+
+Sojourn downlinks through one of two antennas. The high gain carries the whole telemetry frame (`hga_max_payload`, 96 bytes as built); the low gain carries a fraction (`lga_max_payload`, 40 bytes), which is less than the frame needs. When the high gain is declared failed, `task_comms` falls back to the low gain and the telemetry encoder begins **emitting channels in the order given by `tlm_priority[]` until the budget is exhausted**, dropping the rest and reporting the count.
+
+Nothing is truncated — a partial channel would corrupt the frame — so the squeeze is felt as whole channels disappearing, which the ground sees immediately in the new `COMMS` channel (`0x61`: antenna, dropped count, current budget). The encoder decides what fits *before* it emits, so that count describes the frame carrying it rather than the previous one.
+
+Every response a real flight team could make is a patch:
+
+| Response | Surface |
+|---|---|
+| Decide what science is worth the bandwidth | `tlm_priority[]` — the emission order, a byte array in RAM. *This is the Galileo decision.* |
+| Dispute the fault verdict | `g_hga_ok`, or the branch in `task_comms` that acts on it |
+| Cancel the scheduled failure | `hga_fail_after_s` in the config block |
+| Argue with the physics | `lga_max_payload` |
+| Make room by other means | power down sensors, so their channels stop competing |
+
+As built the high gain is healthy and `hga_fail_after_s` is `0` (never), so a scenario schedules the failure. Because the fallback is re-evaluated every cycle, clearing the verdict restores the high gain — the fault is a *judgement the software makes*, not a latched state, which is what makes it patchable.
 
 ### 6.5 In-Flight Patching: Pads, Cave, and Trampolines
 
@@ -277,9 +297,12 @@ One frame per telemetry period (default 5 s, config block), emitted as a hex-enc
 | BUS_MV / LOAD_MW | 2+2 B | From PWR sensor; LOAD is the honest sum of sensor draw |
 | Channels | TLV × n | One `{ID u8, LEN u8, VALUE}` per sensor that is powered **and** polled; absent otherwise |
 | CAM | TLV | Channel `0x43`: capture metadata — frame id, target index, exposure, `HIST_MEAN`, `SAT_PCT`, `STARS` (present only after at least one capture) |
+| COMMS | TLV | Channel `0x61` (4 B): antenna (`0` HGA / `1` LGA), channels dropped this frame, current payload budget (§6.4b) |
 | HK | TLV | Channel `0x60` (8 B): auxiliary flight functions (§6.4) — `heater_on` u8, `shed_count` u8, `propellant_mg` u16, `momentum` s16, `rec_fill_pct` u8, `auth` u8. Absent in SAFE mode |
 | AUX | TLV | Channel `0x5A`: undocumented in the player manual (charter R10) — content TBD with scenario (candidate: CRC of last accepted command, closing the feedback loop for attentive players) |
 | CRC | 2 B | CRC-16/CCITT over frame after SYNC |
+
+Channels are emitted in `tlm_priority[]` order and only while they fit the current antenna's payload budget (§6.4b); what does not fit is dropped whole and counted.
 
 Design intent: the frame is decodable from the recovered manual plus observation; a disabled sensor *vanishes* rather than reading zero — the difference is the game's primary success signal and is trivially assertable by the daemon.
 
@@ -327,6 +350,9 @@ The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pa
 - **Bulk image downlink** — *closed.* `DUMP` ships **disabled** (§8): early missions pay the 64-command downlink, and restoring the capability becomes an objective.
 - **`CALL` verb** — *closed: added, doubly gated.* It fills the gap in the difficulty ladder between "NOP out a branch" and "write Thumb assembly and hook the scheduler," and is safe there because `CALL` runs a routine *once* while a task hook makes it run *forever* — only the latter changes the probe's behavior. It requires `AUTH` **and** ships disabled behind `g_call_enable`, so an instructor enables it for an intro scenario and leaves it off when the canyon should stay.
 - **Mission fiction vs. imaging targets** — *closed.* Targets moved outward rather than the mission moving inward: the scene set is now Pluto, Nix and Arrokoth, placing Sojourn in the Kuiper Belt, consistent with a signal delay measured in hours.
+- **Uplink budget vs. imaging** — *closed (charter R4.2/R4.3).* The budget meters only state-changing uplinks; reads run on a separate allowance. A scenario can therefore hold a tight patch budget and a full image downlink at once.
+- **Detector store readability** — *closed: left readable.* A player who finds `0x0002_4000` can dump the source imagery. Note the interaction with `DUMP`: once bulk downlink is unlocked that costs 18 commands rather than 144, so a scenario that unlocks `DUMP` also makes the easter egg cheaper to spoil. Accepted.
+- **Scene resolution** — *closed: 96×96.* Real spacecraft photographs carry appreciably more at 96×96 (9216 bytes); a full downlink is 144 `PEEK`s, or 18 with `DUMP` enabled.
 - **Housekeeping channel visibility** — *closed.* Channel `0x60` is **documented** in the player manual: it is the only view of heater, propellant, recorder and access state, and the §6.4 flight-function scenarios are unplayable without it. `AUX` (`0x5A`) remains the deliberately undocumented channel satisfying charter R10.2.
 
 **Still open:**
@@ -338,4 +364,4 @@ The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pa
 
 ---
 
-*Version 0.7 — the firmware described here is built, boots under QEMU and passes a 72-check end-to-end suite. Remaining §15 items are content and tuning decisions, not blockers.*
+*Version 0.7 — the firmware described here is built, boots under QEMU and passes an 81-check end-to-end suite. Remaining §15 items are content and tuning decisions, not blockers.*
