@@ -204,8 +204,9 @@ read-only alongside a scripted uplink session against `run-tcp`
 ## Camera images and the processing pipeline
 
 Each catalog target selects one of four stored 64×64 grayscale scenes: a
-survey star field, **1 Ceres** and **Saturn's north polar vortex** (both
-NASA/JPL public-domain imagery, in `assets/`), and a hidden fourth. The
+survey star field, **1 Ceres**, **Saturn's north polar vortex**, and a
+hidden fourth — all three photographs being NASA/JPL public-domain
+imagery kept in `assets/`. The
 camera reads the scene, runs it through a pipeline, and writes the result
 into the frame buffer — which is what the ground downlinks. Pixels never
 ride in telemetry, only capture statistics.
@@ -219,9 +220,9 @@ still recover the source, but only by finding the address and
 `PEEK`-dumping ROM, 64 commands per scene, against the uplink budget.
 
 **Easter egg.** Scene 3 is referenced by no catalog entry, so it cannot
-be commanded — but roughly 1 capture in 100 returns it anyway: Mimas,
-the moon whose Herschel crater makes it look like a certain battle
-station. The roll advances from a fixed seed, not the clock, so a
+be commanded — but roughly 1 capture in 100 returns it anyway: a Cassini
+image of Mimas, the moon whose Herschel crater makes it look like a
+certain battle station. The roll advances from a fixed seed, not the clock, so a
 replayed command log reproduces it exactly. `g_cam_egg_pct` sets the
 rate (0 disables, 100 forces).
 

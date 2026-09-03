@@ -6,10 +6,10 @@ the ROM **detector image store**, a fixed-address region OUTSIDE the golden
 application image. The player's binary therefore contains no pixels — only
 the code that reads them. See spec §6.4a.
 
-Two scenes are imported from NASA planetary imagery in assets/; the survey
-star field and the Mimas easter egg are rendered procedurally here.
-Everything is deterministic, so every build is byte-identical and scenario
-assertions stay stable.
+Three scenes are imported from NASA planetary imagery in assets/; only the
+survey star field is rendered procedurally here. Everything is
+deterministic, so every build is byte-identical and scenario assertions
+stay stable.
 """
 import math
 import pathlib
@@ -81,59 +81,14 @@ def scene_survey():
     return img
 
 
-# ---- scene 3: Mimas — the "Death Star moon" easter egg ---------------
-# Saturn's moon Mimas, whose 130 km Herschel crater famously gives it a
-# Death Star silhouette. Rendered here rather than imported so the joke
-# carries no third-party artwork.
-def scene_mimas():
-    r = R(0x4D1A)
-    img = [0] * N
-    for _ in range(45):                             # background stars
-        star(img, r.rng(0, W - 1), r.rng(0, H - 1), r.rng(60, 200), 0.55)
-
-    cx, cy, rad = 30.0, 33.0, 23.0
-    hx, hy, hrad = 22.0, 24.0, 8.0                  # Herschel crater
-    craters = [(r.rng(-18, 18), r.rng(-18, 18), r.rng(2, 5)) for _ in range(22)]
-
-    for y in range(H):
-        for x in range(W):
-            dx, dy = x - cx, y - cy
-            d = math.hypot(dx, dy)
-            if d > rad:
-                continue
-            # Lit from the upper left; crescent terminator toward lower right.
-            nx, ny = dx / rad, dy / rad
-            nz = math.sqrt(max(0.0, 1.0 - nx * nx - ny * ny))
-            lam = (-0.62 * nx) + (-0.45 * ny) + (0.64 * nz)
-            v = 22 + 210 * max(0.0, lam) ** 0.85
-
-            for (ox, oy, orad) in craters:          # pocked surface
-                cd = math.hypot(dx - ox, dy - oy)
-                if cd < orad:
-                    v *= 0.72
-                elif cd < orad + 1.0:
-                    v *= 1.12
-
-            hd = math.hypot(dx - (hx - cx), dy - (hy - cy))
-            if hd < hrad:                            # Herschel: deep bowl
-                depth = math.sqrt(max(0.0, 1.0 - (hd / hrad) ** 2))
-                v *= (0.30 + 0.22 * (1.0 - depth))
-                if hd < hrad * 0.26:                 # central peak
-                    v *= 2.5
-            elif hd < hrad + 1.6:                    # bright rim
-                v *= 1.5
-
-            img[y * W + x] = max(0, min(255, int(v)))
-    return img
-
-
 SCENES = [
     ("survey field K-25 (procedural star field)", scene_survey),
     ("1 Ceres — Occator bright spots (NASA/JPL Dawn)",
      lambda: imported("ceres.png")),
     ("Saturn north polar vortex (NASA/JPL Cassini)",
      lambda: imported("saturn_hexagon.png")),
-    ("Mimas — easter egg, reachable only by the 1% roll", scene_mimas),
+    ("Mimas, Herschel crater (NASA/JPL Cassini) — easter egg, reachable\n       only by the 1% roll",
+     lambda: imported("mimas.png")),
 ]
 
 

@@ -152,9 +152,9 @@ A player can still obtain the source, but only by earning it: find the store add
 | 0 | Survey field K-25 | procedural star field |
 | 1 | 1 Ceres, Occator bright spots | NASA/JPL-Caltech (Dawn), public domain |
 | 2 | Saturn north polar vortex and rings | NASA/JPL-Caltech (Cassini), public domain |
-| 3 | Mimas — **easter egg** | procedural |
+| 3 | Mimas, Herschel crater — **easter egg** | NASA/JPL-Caltech (Cassini), public domain |
 
-**The easter egg.** Scene 3 is *not referenced by any catalog entry*, so it cannot be commanded. Roughly **1 capture in 100** returns it instead of the commanded target: Mimas, the Saturnian moon whose 130 km Herschel crater gives it a famously Death-Star-like silhouette. The roll is advanced per capture from a fixed seed rather than from the clock, so it is **replay-deterministic** — essential, because the platform's saves are command-log replays (charter R15.1) and a truly random egg would make a replayed log diverge. `g_cam_egg_pct` controls the rate: `0` disables it, `100` forces it, which is how the regression test verifies the scene exists.
+**The easter egg.** Scene 3 is *not referenced by any catalog entry*, so it cannot be commanded. Roughly **1 capture in 100** returns it instead of the commanded target: a Cassini image of Mimas, the Saturnian moon whose 130 km Herschel crater gives it a famously Death-Star-like silhouette. The roll is advanced per capture from a fixed seed rather than from the clock, so it is **replay-deterministic** — essential, because the platform's saves are command-log replays (charter R15.1) and a truly random egg would make a replayed log diverge. `g_cam_egg_pct` controls the rate: `0` disables it, `100` forces it, which is how the regression test verifies the scene exists.
 
 > **Why raw pixels rather than a stored JPEG/PNG.** A compressed image cannot be meaningfully inverted or filtered by poking bytes, and an on-board decoder would be a large block of un-patchable code. Real missions downlink raw sensor data and form image products on the ground, so the probe holds raw pixels and the *ground station* writes the PNG (`tools/img_recover.py`). That keeps every stage of the pipeline a legitimate patch target.
 
