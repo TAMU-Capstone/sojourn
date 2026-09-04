@@ -7,7 +7,7 @@
 | **Version** | 1.0 |
 | **Date** | September 3, 2026 |
 | **Author** | Trevor Bakker |
-| **Status** | Normative. Settles the M0 "introspection API" deliverable. Charter R4.2/R4.3, R15.1 and R20.2 depend on it. |
+| **Status** | Normative detail for charter requirements **R24.1–R24.21**. The charter is the requirements register; this document explains and measures those requirements but defines no identifiers of its own. |
 
 ---
 
@@ -108,11 +108,11 @@ The platform holds exactly two connections to the probe, and confusing them is t
 | Visible to the player | Yes — it is the game | No |
 | Has side effects on the probe | Yes (`g_last_cmd_crc`, and `POKE` obviously) | None |
 
-**I1.** The daemon **shall not** issue any command on the command channel that the player did not issue. Everything the daemon sends there comes from the player, in order, exactly once.
+**R24.2.** The daemon **shall not** issue any command on the command channel that the player did not issue. Everything the daemon sends there comes from the player, in order, exactly once.
 
-**I2.** The daemon **shall not** write to the probe over the introspection channel — not memory, not registers, not breakpoints. All writes are the player's, through `POKE`. A daemon able to write could repair a probe the player broke, and replay (§5.3) would no longer reproduce the session.
+**R24.3.** The daemon **shall not** write to the probe over the introspection channel — not memory, not registers, not breakpoints. All writes are the player's, through `POKE`. A daemon able to write could repair a probe the player broke, and replay (§5.3) would no longer reproduce the session.
 
-**I3.** Introspection activity **shall not** appear in the command log, **shall not** be charged to any budget, and **shall not** be surfaced in the console.
+**R24.4.** Introspection activity **shall not** appear in the command log, **shall not** be charged to any budget, and **shall not** be surfaced in the console.
 
 ---
 
@@ -120,7 +120,7 @@ The platform holds exactly two connections to the probe, and confusing them is t
 
 ### 5.1 The permitted packet set
 
-**I4.** A conforming daemon **shall** use only these packets:
+**R24.5.** A conforming daemon **shall** use only these packets:
 
 | Packet | Purpose |
 |---|---|
@@ -131,7 +131,7 @@ The platform holds exactly two connections to the probe, and confusing them is t
 | `D` | Detach, resuming the guest |
 | `0x03` (raw byte, not a packet) | Interrupt: halt the guest |
 
-**I5.** A conforming daemon **shall not** send: `M`, `X` (write memory), `P`, `G` (write registers), `Z`, `z` (breakpoints and watchpoints), `s`, `S`, `vCont;s` (single-step), or `k` (kill). Each of these either mutates the probe or alters its timing, and both destroy replay determinism. Breakpoints are the most tempting and the most damaging: a breakpoint left set changes execution timing for the rest of the session and is invisible in the command log, so a replayed session diverges from the original with nothing to explain why.
+**R24.6.** A conforming daemon **shall not** send: `M`, `X` (write memory), `P`, `G` (write registers), `Z`, `z` (breakpoints and watchpoints), `s`, `S`, `vCont;s` (single-step), or `k` (kill). Each of these either mutates the probe or alters its timing, and both destroy replay determinism. Breakpoints are the most tempting and the most damaging: a breakpoint left set changes execution timing for the rest of the session and is invisible in the command log, so a replayed session diverges from the original with nothing to explain why.
 
 Reading registers with `g` or `p` is permitted but no predicate currently needs it.
 
@@ -139,38 +139,38 @@ Reading registers with `g` or `p` is permitted but no predicate currently needs 
 
 A packet is `$` + payload + `#` + two lowercase hex checksum digits, where the checksum is the sum of the payload bytes modulo 256. The peer replies `+` to acknowledge or `-` to request retransmission.
 
-**I6.** The daemon **shall** decode run-length encoding in received packet data. A `*` in packet data is followed by one character whose value minus 29 is the number of *additional* repeats of the preceding character. So `0*!` is `0` repeated 1 + (0x21 − 29) = 5 times, i.e. `00000`.
+**R24.7.** The daemon **shall** decode run-length encoding in received packet data. A `*` in packet data is followed by one character whose value minus 29 is the number of *additional* repeats of the preceding character. So `0*!` is `0` repeated 1 + (0x21 − 29) = 5 times, i.e. `00000`.
 
 This is the single most likely wire-level bug, and it is a silent one: RSP permits RLE but does not require it, and **QEMU does not currently apply it** — a 256-byte read of zeroed memory comes back as 512 literal `0` characters. A daemon that ignores RLE will therefore pass every test against QEMU and then return corrupt data the first time it is pointed at Renode, or at a different QEMU build. Decode it from the start; it is four lines.
 
-**I7.** The daemon **shall** treat a reply beginning `E` as a failure of that read, and **shall not** interpret it as data. See §6.
+**R24.8.** The daemon **shall** treat a reply beginning `E` as a failure of that read, and **shall not** interpret it as data. See §6.
 
 ### 5.3 Reads must be chunked
 
-**I8.** The daemon **shall** honor the `PacketSize` reported by `qSupported` and **shall** split any longer read into chunks.
+**R24.9.** The daemon **shall** honor the `PacketSize` reported by `qSupported` and **shall** split any longer read into chunks.
 
 QEMU's stub for this target reports `PacketSize=1000` — 4096 bytes. Because an `m` reply is hex, that caps a single read at roughly 2048 bytes. Measured against the reference build: a 1024-byte read succeeds (2048 reply characters), a 2048-byte read succeeds (4096 characters), and a 9216-byte read of the frame buffer **fails with an error reply**, not a truncated one.
 
-**I9.** The daemon **should** use a chunk size of **1024 bytes**, which is comfortably inside the limit on both emulators, and **shall** reassemble chunks in order.
+R24.9 sets the chunk size at 1024 bytes, comfortably inside the limit on both emulators, and requires the chunks be reassembled in order.
 
-A daemon that reads the frame buffer in one packet gets `E22` and, if it is careless about `E` replies (I7), records the three bytes `E`, `2`, `2` as image data.
+A daemon that reads the frame buffer in one packet gets `E22` and, if it is careless about `E` replies (R24.8), records the three bytes `E`, `2`, `2` as image data.
 
 ### 5.4 The evaluation pass
 
-**I10.** For each downlink frame, the daemon **shall** perform the following, in this order:
+**R24.10.** For each downlink frame, the daemon **shall** perform the following, in this order:
 
 1. Receive and decode the telemetry frame on the command channel.
 2. Compute the event list against the previous frame.
 3. **Halt** the guest — send `0x03` and await the stop reply.
-4. Issue every `m` read the pass requires, chunked per I8/I9.
+4. Issue every `m` read the pass requires, chunked per R24.9/R24.9.
 5. **Resume** the guest — send `c`.
 6. Evaluate objectives against the frame, the events, and the reads from step 4.
 
 Steps 3–5 are the snapshot window. Every read inside it observes one instant of probe state, which is what makes the format specification's snapshot semantics true rather than aspirational.
 
-**I11.** The daemon **shall** cache reads within one pass, so that a repeated `(address, length)` is fetched once, and **shall not** cache across passes.
+**R24.12.** The daemon **shall** cache reads within one pass, so that a repeated `(address, length)` is fetched once, and **shall not** cache across passes.
 
-**I12.** The daemon **should** determine the set of ranges a pass needs by walking the package's predicates once at load time, and **may** coalesce them into fewer, larger reads. This is an optimization and changes no observable behavior.
+*Advisory, carrying no requirement:* determine the set of ranges a pass needs by walking the package's predicates once at load time, and coalesce them into fewer, larger reads. This is an optimization and changes no observable behavior.
 
 ### 5.5 Halting is safe, and this was measured
 
@@ -178,9 +178,9 @@ Halting a running spacecraft simulation to grade it sounds like it must perturb 
 
 Measured on the reference build: the guest was halted over the introspection channel and held for **12.0 seconds of wall-clock time**. Guest uptime across that window advanced from 10 s to 15 s — exactly one 5-second telemetry period, with no gap and no jump. From the firmware's point of view nothing happened at all.
 
-This is what makes I10 compatible with replay: the length of the snapshot window has no effect on guest-observable state, so a replayed session — where reads may take a different amount of wall time — reproduces the original exactly. **This property is the reason halting is permitted.** A daemon that reads without halting gets §2.3's race back; a daemon that halts is both correct and free.
+This is what makes R24.10 compatible with replay: the length of the snapshot window has no effect on guest-observable state, so a replayed session — where reads may take a different amount of wall time — reproduces the original exactly. **This property is the reason halting is permitted.** A daemon that reads without halting gets §2.3's race back; a daemon that halts is both correct and free.
 
-**I13.** The daemon **shall** bound the snapshot window and treat exceeding it as an error rather than hanging with the probe stopped. 250 ms is generous — a full evaluation pass is a handful of packets.
+**R24.13.** The daemon **shall** bound the snapshot window and treat exceeding it as an error rather than hanging with the probe stopped. 250 ms is generous — a full evaluation pass is a handful of packets.
 
 ---
 
@@ -188,13 +188,13 @@ This is what makes I10 compatible with replay: the length of the snapshot window
 
 This is a refinement of the format specification's "missing data is false" rule, and the distinction matters.
 
-**I14.** A predicate over **absent telemetry** — a channel that did not appear, a path that does not exist, a frame that failed CRC — is **false**. That is normal gameplay: a disabled sensor vanishes, and a scenario says so with `channel_absent`.
+**R24.14.** A predicate over **absent telemetry** — a channel that did not appear, a path that does not exist, a frame that failed CRC — is **false**. That is normal gameplay: a disabled sensor vanishes, and a scenario says so with `channel_absent`.
 
-**I15.** A **failed introspection read** — connection refused, timeout, `E` reply, short read — is **an error, not false**. The daemon **shall** abort the evaluation pass, leave every objective state unchanged, and surface the failure. It **shall not** treat the read as zero, as absent, or as false.
+**R24.15.** A **failed introspection read** — connection refused, timeout, `E` reply, short read — is **an error, not false**. The daemon **shall** abort the evaluation pass, leave every objective state unchanged, and surface the failure. It **shall not** treat the read as zero, as absent, or as false.
 
 The reason to be strict: if introspection failure silently evaluated false, a daemon whose GDB connection had dropped would report every memory-dependent objective as incomplete. The player would see their correct patch rejected, and the log would show nothing wrong. Objectives would fail *because the grader broke*, and it would look exactly like the player being wrong.
 
-**I16.** On losing the introspection connection the daemon **shall** attempt to reconnect before the next pass, and **shall** report degraded grading to the console if it cannot. A session may continue — telemetry-only objectives still evaluate — but the player must be told.
+**R24.16.** On losing the introspection connection the daemon **shall** attempt to reconnect before the next pass, and **shall** report degraded grading to the console if it cannot. A session may continue — telemetry-only objectives still evaluate — but the player must be told.
 
 ---
 
@@ -206,29 +206,29 @@ The harness tier substitutes Renode for QEMU (firmware spec §6). Renode serves 
 machine StartGdbServer 3333
 ```
 
-**I17.** The daemon **shall not** contain emulator-specific introspection code. Everything in §5 is protocol, not implementation, and the only permitted difference between tiers is the command used to start the emulator — which belongs in configuration, not in the daemon's source.
+**R24.17.** The daemon **shall not** contain emulator-specific introspection code. Everything in §5 is protocol, not implementation, and the only permitted difference between tiers is the command used to start the emulator — which belongs in configuration, not in the daemon's source.
 
-Renode's stub may differ from QEMU's in ways I6 and I8 already cover: it is permitted to apply RLE, and it may advertise a different `PacketSize`. A daemon that follows this document needs no change; one that hard-codes QEMU's observed behavior will need rewriting at exactly the point in the semester when there is no time for it.
+Renode's stub may differ from QEMU's in ways R24.7 and R24.9 already cover: it is permitted to apply RLE, and it may advertise a different `PacketSize`. A daemon that follows this document needs no change; one that hard-codes QEMU's observed behavior will need rewriting at exactly the point in the semester when there is no time for it.
 
 ---
 
 ## 8. Exposure
 
-The introspection port is a debug interface with no authentication, and it can read and — for anyone not bound by I2 — write all of probe memory.
+The introspection port is a debug interface with no authentication, and it can read and — for anyone not bound by R24.3 — write all of probe memory.
 
-**I18.** The emulator **shall** bind the introspection port to loopback only, inside the container.
+**R24.18.** The emulator **shall** bind the introspection port to loopback only, inside the container.
 
-**I19.** The introspection channel **shall not** be documented in any player-facing material, and **shall not** be reachable from the console.
+**R24.19.** The introspection channel **shall not** be documented in any player-facing material, and **shall not** be reachable from the console.
 
 The charter's threat model applies and is unchanged: the player owns the container and may find this port. That is accepted — "a student who cheats by reverse engineering the grader has, in a meaningful sense, completed the exercise." The requirement is that they have to *find* it, not that they cannot.
 
-**I20.** No instructor-only data — `symbols.json` above all — **shall** be reachable through this channel or present in the player image (charter R19). The channel exposes probe memory, which the player may read anyway; it must never become a route to the answer key.
+**R24.20.** No instructor-only data — `symbols.json` above all — **shall** be reachable through this channel or present in the player image (charter R19). The channel exposes probe memory, which the player may read anyway; it must never become a route to the answer key.
 
 ---
 
 ## 9. Conformance
 
-A daemon conforms when I1–I20 hold. The observable consequences the conformance suite can actually check:
+A daemon conforms when R24.2–R24.20 hold. The observable consequences the conformance suite can actually check:
 
 | Check | How it is observed |
 |---|---|

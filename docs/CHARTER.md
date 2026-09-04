@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Document** | Project Charter and Requirements Specification |
-| **Version** | 0.6 (Draft — §6.11 ground-station console and session lifecycle requirements added; scenario-controlled telemetry decoding. v0.5 named QEMU as the emulation target and deferred Renode; emulation risk downgraded. v0.4 captured the specifications' normative content as requirements; §6.8–§6.10 added; R2.2, R3.1, R3.2, R21, R22.1 amended) |
+| **Version** | 0.7 (Draft — one identifier per requirement: the introspection specification's I-numbers folded into R24.1–R24.21 and a generated register added. v0.6 — §6.11 ground-station console and session lifecycle requirements added; scenario-controlled telemetry decoding. v0.5 named QEMU as the emulation target and deferred Renode; emulation risk downgraded. v0.4 captured the specifications' normative content as requirements; §6.8–§6.10 added; R2.2, R3.1, R3.2, R21, R22.1 amended) |
 | **Date** | September 3, 2026 |
 | **Sponsor** | Trevor Bakker (Instructor) |
 | **Team** | 5–6 Computer Science students, one semester |
@@ -213,24 +213,39 @@ Requirements in this section make the *Introspection API* specification binding.
 |---|---|---|---|
 | R24.1 | T | The platform SHALL maintain exactly two connections to the probe: a command channel carrying only player-originated uplinks, and a read-only introspection channel used only for objective evaluation. | I |
 | R24.2 | T | The daemon SHALL originate no uplink command of its own. Every command delivered to the probe SHALL correspond to exactly one player action recorded in the command log. | T |
-| R24.3 | T | The daemon SHALL NOT write probe memory or registers, and SHALL NOT set breakpoints or single-step, over the introspection channel. | I |
+| R24.3 | T | The daemon SHALL NOT write probe memory or registers over the introspection channel. | I |
 | R24.4 | T | Introspection activity SHALL NOT be charged to any command budget, SHALL NOT be appended to the command log, and SHALL NOT alter any value observable in downlink telemetry. | T |
-| R24.5 | T | All memory reads within one evaluation pass SHALL observe probe state at a single instant; the guest SHALL be halted for the duration of the pass, and the halt SHALL NOT exceed 250 ms. | T |
-| R24.6 | T | A failed introspection read SHALL abort the evaluation pass and leave every objective state unchanged; it SHALL NOT be evaluated as a false predicate. | T |
-| R24.7 | T | On loss of the introspection channel the daemon SHALL attempt reconnection before the next evaluation pass, and SHALL report degraded grading to the console within one telemetry period if reconnection fails. | D |
-| R24.8 | T | The daemon SHALL contain no emulator-specific introspection code; substituting the harness-tier emulator SHALL require configuration change only, verified by an empty diff across daemon source. | I |
-| R24.9 | T | The introspection port SHALL be bound to the loopback interface only, and SHALL NOT be documented in any player-facing material. | I |
-| R24.10 | T | Objective evaluation SHALL be a pure function of setup state, the command log, and probe behavior. No objective state SHALL depend on wall-clock time, host performance, or a random source. Verified by replaying one command log of at least 20 commands twice and obtaining identical objective states and identical first-completion frame numbers. | T |
+| R24.5 | T | The daemon SHALL use only these GDB remote serial protocol packets: query halt reason, read memory, negotiate supported features, continue, detach, and the raw interrupt byte. | I |
+| R24.6 | T | The daemon SHALL NOT send write-memory, write-register, breakpoint, watchpoint, single-step or kill packets. Each either mutates the probe or alters its timing, and a breakpoint left set changes execution timing for the remainder of the session while being invisible in the command log. | I |
+| R24.7 | T | The daemon SHALL decode run-length encoding in received packet data, in which an asterisk is followed by one character whose value less 29 is the count of additional repeats of the preceding character. | T |
+| R24.8 | T | The daemon SHALL treat a reply beginning with the error prefix as a failed read and SHALL NOT interpret its characters as data. | T |
+| R24.9 | T | The daemon SHALL honor the maximum packet size the stub advertises, SHALL split any longer read into chunks of at most 1024 bytes, and SHALL reassemble them in order. | T |
+| R24.10 | T | For each downlink frame the daemon SHALL, in this order: decode the frame; compute its event list; apply any uplink whose delay has expired; halt the guest; perform every memory read the pass requires; resume the guest; then evaluate objectives. | T |
+| R24.11 | T | All memory reads within one evaluation pass SHALL observe probe state at a single instant. | T |
+| R24.12 | T | The daemon SHALL cache reads within one evaluation pass so that a repeated address and length is fetched once, and SHALL NOT cache reads across passes. | T |
+| R24.13 | T | The snapshot window SHALL NOT exceed 250 ms, and exceeding it SHALL be treated as an error rather than leaving the probe halted. | T |
+| R24.14 | T | A predicate over absent telemetry — an absent channel, an undefined field path, or a frame failing CRC — SHALL evaluate false and SHALL NOT abort the evaluation pass. | T |
+| R24.15 | T | A failed introspection read — connection refused, timeout, error reply, or short read — SHALL abort the evaluation pass and leave every objective state unchanged; it SHALL NOT be evaluated as a false predicate. | T |
+| R24.16 | T | On loss of the introspection channel the daemon SHALL attempt reconnection before the next evaluation pass, and SHALL report degraded grading to the console within one telemetry period if reconnection fails. | D |
+| R24.17 | T | The daemon SHALL contain no emulator-specific introspection code; substituting the harness-tier emulator SHALL require configuration change only, verified by an empty diff across daemon source. | I |
+| R24.18 | T | The emulator SHALL bind the introspection port to the loopback interface only. | I |
+| R24.19 | T | The introspection channel SHALL NOT be documented in any player-facing material and SHALL NOT be reachable from the console. | I |
+| R24.20 | T | No instructor-only data, the symbol map above all, SHALL be reachable through the introspection channel or present in the player image. | I |
+| R24.21 | T | Objective evaluation SHALL be a pure function of setup state, the command log, and probe behavior. No objective state SHALL depend on wall-clock time, host performance, or a random source. Verified by replaying one command log of at least 20 commands twice and obtaining identical objective states and identical first-completion frame numbers. | T |
 
 ### 6.10 Traceability
 
-Four specifications carry normative content. Each is binding through the requirements named here; where a specification and this charter disagree, **this charter governs and the specification is amended**.
+**This charter is the requirements register.** Every requirement has exactly one identifier, defined here. The specifications explain, measure and justify those requirements; **none of them defines identifiers of its own**. Where a specification and this charter disagree, this charter governs and the specification is amended.
+
+`REQUIREMENTS.md` is the whole set in one sorted table, generated from this document by `firmware/tools/requirements.py`; `requirements.csv` is the same data for a spreadsheet. Run `requirements.py --check` in CI: it fails if a requirement is defined twice, if one carries no SHALL, if a specification cites an identifier this charter does not define, or if a specification introduces its own numbering scheme.
+
+Four specifications carry normative detail.
 
 | Specification | Standing | Made binding by |
 |---|---|---|
 | Firmware Design Specification | Normative — the probe | R1.1, R1.2, R5.1–R5.3, R8.1, R8.2, R10.1, R10.2 |
 | Scenario Package Format | Normative — the content seam | R11.1–R11.3, R13, R22.1, R23.1–R23.10 |
-| Introspection API | Normative — evaluation transport | R2.2, R24.1–R24.10 |
+| Introspection API | Normative — evaluation transport | R2.2, R24.1–R24.21 |
 | Scenario Author's Guide | Normative — authoring practice | R9.1, R9.2, R12 |
 | Platform Design | **Advisory only** — carries no requirements | — |
 
@@ -239,8 +254,8 @@ Automated verification is concentrated in three suites, and a requirement marked
 | Suite | Covers |
 |---|---|
 | Firmware end-to-end (`firmware/tools/e2e_test.py`, 99 checks) | R1.1, R1.2, R5.1–R5.3, R10.2 |
-| Scenario conformance (`conformance/run_conformance.py`, 18 checks) | R13, R23.1, R23.4, R23.7, R23.8, R24.4, R24.10 |
-| Daemon unit and integration tests (team-authored) | R2.1, R3.1–R3.4, R4.1, R4.2, R4.3, R11.1, R14.1, R15.1, R15.2, R20.1, R23.2, R23.3, R23.5, R23.9, R23.10, R24.5–R24.7 |
+| Scenario conformance (`conformance/run_conformance.py`, 18 checks) | R13, R23.1, R23.4, R23.7, R23.8, R24.4, R24.21 |
+| Daemon unit and integration tests (team-authored) | R2.1, R3.1–R3.4, R4.1, R4.2, R4.3, R11.1, R14.1, R15.1, R15.2, R20.1, R23.2, R23.3, R23.5, R23.9, R23.10, R24.10–R24.16, R25.1–R26.7 |
 
 Requirements verified by inspection, analysis or demonstration are settled at the design review (§10) rather than in CI, and are listed in the acceptance script.
 
