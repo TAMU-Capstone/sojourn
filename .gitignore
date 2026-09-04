@@ -65,3 +65,7 @@ Claude outputs/
 
 # scenario packages must carry their probe image
 !scenarios/**/*.elf
+
+# doc build
+docs/node_modules/
+docs/manual.html

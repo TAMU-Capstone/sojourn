@@ -19,6 +19,20 @@ polished reference mission.
   camera, telemetry, PEEK/POKE command interpreter, watchdog recovery.
   `make check && make test` — builds and tests on Linux and macOS.
 
+## Documentation
+
+Sources are the markdown files in `docs/`; the `.docx`, `.pdf` and
+`requirements.md` beside them are generated. Edit the markdown, then:
+
+    cd docs
+    make deps     # once - installs the one npm package the Word exports need
+    make          # rebuilds everything your machine can build
+    make check    # requirement identifiers resolve; reports what is installed
+
+`make` degrades rather than failing: without node it skips the Word exports,
+without a Chromium or Chrome it still writes `manual.html` and skips the PDF.
+`requirements.md` is generated from `charter.md` and must never be hand-edited.
+
 ## Quick start
 
     cd firmware
