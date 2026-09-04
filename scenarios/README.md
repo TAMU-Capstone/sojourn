@@ -2,7 +2,7 @@
 
 Two worked packages, both **pure content** — no executable predicates, no
 platform code. They are the material the *Scenario Package Format*
-specification (`docs/SCENARIO_FORMAT.md`) describes, and the thing to copy
+specification (`docs/scenario_format.md`) describes, and the thing to copy
 when authoring a third.
 
 | Package | Objectives | What it exercises |

@@ -100,7 +100,7 @@ A scenario is **pure content**: a directory (or archive) containing
 
 The assertion language is the platform's core abstraction. It must be expressive enough for the reference scenario's hardest objective (code injection) and simple enough that an instructor can author it from documentation alone. The acceptance test is objective #4 in §2: **a new scenario is added with zero platform-code changes.**
 
-> **This format is specified, not delegated.** See the *Scenario Package Format* specification (`docs/SCENARIO_FORMAT.md`), normative for the package layout, the manifest, the assertion vocabulary, the evaluation contract, the command-log format, and one thin daemon entry point used only for testing — and deliberately silent about daemon architecture, language, storage and the console, which remain the team's design. It ships with two reference packages, a reference evaluator, a validator satisfying R13, and a conformance suite that serves as the daemon's acceptance gate. The reasoning: the team builds one daemon once, while the sponsor authors scenarios against this format for years afterward. The format is the long-lived artifact, so it is owned by the sponsor and fixed up front; the daemon is not, so it is left open.
+> **This format is specified, not delegated.** See the *Scenario Package Format* specification (`docs/scenario_format.md`), normative for the package layout, the manifest, the assertion vocabulary, the evaluation contract, the command-log format, and one thin daemon entry point used only for testing — and deliberately silent about daemon architecture, language, storage and the console, which remain the team's design. It ships with two reference packages, a reference evaluator, a validator satisfying R13, and a conformance suite that serves as the daemon's acceptance gate. The reasoning: the team builds one daemon once, while the sponsor authors scenarios against this format for years afterward. The format is the long-lived artifact, so it is owned by the sponsor and fixed up front; the daemon is not, so it is left open.
 
 ## 6. Requirements
 
@@ -237,7 +237,7 @@ Requirements in this section make the *Introspection API* specification binding.
 
 **This charter is the requirements register.** Every requirement has exactly one identifier, defined here. The specifications explain, measure and justify those requirements; **none of them defines identifiers of its own**. Where a specification and this charter disagree, this charter governs and the specification is amended.
 
-`REQUIREMENTS.md` is the whole set in one sorted table, generated from this document by `firmware/tools/requirements.py`; `requirements.csv` is the same data for a spreadsheet. Run `requirements.py --check` in CI: it fails if a requirement is defined twice, if one carries no SHALL, if a specification cites an identifier this charter does not define, or if a specification introduces its own numbering scheme.
+`requirements.md` is the whole set in one sorted table, generated from this document by `firmware/tools/requirements.py`; `requirements.csv` is the same data for a spreadsheet. Run `requirements.py --check` in CI: it fails if a requirement is defined twice, if one carries no SHALL, if a specification cites an identifier this charter does not define, or if a specification introduces its own numbering scheme.
 
 Four specifications carry normative detail.
 
