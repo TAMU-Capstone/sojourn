@@ -83,6 +83,14 @@ frame's CRC, decodes all channels with engineering units, and reports
 frame-to-frame **events** — the signals the objective checker will
 ultimately be built on.
 
+**Try it with no toolchain.** `samples/capture.txt` is a real recorded session —
+the probe healthy, the high-gain dish jamming at 40%, the fall back to the omni,
+the failed redeploy, and the priority table exchanged so the radiation counter
+survives. Decoding a file needs only Python, so this works before QEMU or the
+ARM toolchain are installed:
+
+    python3 firmware/tools/tlm_decode.py --file samples/capture.txt
+
 ### Input sources (mutually exclusive; stdin is the default)
 
 | Invocation | Behavior |
