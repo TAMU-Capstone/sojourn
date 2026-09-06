@@ -38,7 +38,7 @@ without a Chromium or Chrome it still writes `manual.html` and skips the PDF.
     cd firmware
     make check   # verify toolchain (prints per-OS install hints)
     make run     # boot the probe; telemetry streams immediately
-    make test    # 36-check end-to-end suite
+    make test    # 99-check end-to-end suite
 
 Player-facing material (the stripped `probe.bin`, memory map, and the
 Recovered Mission Operations Manual) is derived from this tree — the

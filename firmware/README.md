@@ -42,7 +42,7 @@ typically already present).
     make gdb        # attach the cross-gdb it finds (arm-none-eabi-gdb or gdb-multiarch)
     make tlm        # boot the probe and stream DECODED telemetry (see below)
     make run-tcp    # boot with the UART on tcp:5599 (one client at a time)
-    make test       # 81-check end-to-end suite
+    make test       # 99-check end-to-end suite
 
 Overridable: `make CROSS=... QEMU_BIN=... PYTHON=...` if your tools have
 nonstandard names or live off PATH.
