@@ -393,36 +393,3 @@ How the charter's four-step ramp (R9) maps onto this design, each objective has 
 ## 14. Documentation Split (spec → player manual)
 
 The *Recovered Mission Operations Manual* is this spec, redacted in-fiction ("pages lost"): players **get** the documented command protocol verbs (§8, `PING`/`PEEK`/`POKE`/`STAT`/`SAFE`/`NOOP`, not `AUTH`/`TRIM`), the telemetry format minus AUX and HK (§9), the coarse memory map (ROM / APP / data regions and the protection rules, not the internal layout), the sensor list with slot IDs, boot/watchdog behavior described operationally, and the camera's basic operating registers (`CCTRL`, `EXPOSURE_MS`, `GAIN`, the stats registers); presented as a surviving excerpt of the imaging handbook. Players **do not get**: task-table location or format, config-block layout (including the **target catalog** and all §6.4 function parameters, and the **engineering key**; finding these *is* the mission), free-RAM region, frame-buffer address (discoverable via `FRAME_ADDR`), the physics module, the imaging pipeline internals (`cam_lut`, `cam_kernel`, `cam_filter`, the stored scenes), the `AUTH`/`TRIM` verbs, the AUX and HK channels, or any symbol file. Everything withheld is discoverable in the binary, that's the game. (The manual's Appendix C hints that undocumented channels exist; `0x60` and `0x5A` are exactly those.)
-
-## 15. Open Questions for Sponsor Review
-
-**Resolved since first issue** (recorded so the reasoning is not lost):
-
-- **Reproducibility**: *closed, and not a preference.* Charter R15.1 restores progress by replaying the command log against a fresh probe. Clock- or entropy-derived behavior would make a replayed log diverge, so determinism is an architectural requirement: a fixed PRNG seed for sensor physics, and a replay-deterministic roll for the imaging easter egg.
-- **Cortex-M4 vs M3**: *closed.* M4 on `mps2-an386` builds, boots and passes the full suite; the M3/LM3S path remains a documented fallback behind a build flag.
-- **AUX channel content**: *closed.* CRC echo of the last accepted command: a quiet confirmation that rewards attentive frame decoders.
-- **Bulk image downlink**: *closed.* `DUMP` ships **disabled** (§8): early missions pay the 64-command downlink, and restoring the capability becomes an objective.
-- **`CALL` verb**: *closed: added, doubly gated.* It fills the gap in the difficulty ladder between "NOP out a branch" and "write Thumb assembly and hook the scheduler," and is safe there because `CALL` runs a routine *once* while a task hook makes it run *forever*; only the latter changes the probe's behavior. It requires `AUTH` **and** ships disabled behind `g_call_enable`, so an instructor enables it for an intro scenario and leaves it off when the canyon should stay.
-- **Mission fiction vs. imaging targets**: *closed.* Targets moved outward rather than the mission moving inward: the scene set is now Pluto, Nix and Arrokoth, placing Sojourn in the Kuiper Belt, consistent with a signal delay measured in hours.
-- **Uplink budget vs. imaging**: *closed (charter R4.2/R4.3).* The budget meters only state-changing uplinks; reads run on a separate allowance. A scenario can therefore hold a tight patch budget and a full image downlink at once.
-- **Detector store readability**: *closed: left readable.* A player who finds `0x0002_4000` can dump the source imagery. Note the interaction with `DUMP`: once bulk downlink is unlocked that costs 18 commands rather than 144, so a scenario that unlocks `DUMP` also makes the easter egg cheaper to spoil. Accepted.
-- **Scene resolution**: *closed: 96×96.* Real spacecraft photographs carry appreciably more at 96×96 (9216 bytes); a full downlink is 144 `PEEK`s, or 18 with `DUMP` enabled.
-- **Housekeeping channel visibility**: *closed.* Channel `0x60` is **documented** in the player manual: it is the only view of heater, propellant, recorder and access state, and the §6.4 flight-function scenarios are unplayable without it. `AUX` (`0x5A`) remains the deliberately undocumented channel satisfying charter R10.2.
-- **Telemetry cadence**: *closed: 5 s, and now load-bearing.* The comms model (§6.4b) derives the per-frame byte budget from the link rate and the cadence, so 5 s is no longer an arbitrary heartbeat: it is the constant that makes the high gain afford 100 bytes and the omni 40, which is what creates the triage. Changing it changes the difficulty of every bandwidth scenario, and `tlm_period` is itself a patch surface a player may discover. Revisit after playtest with that coupling in mind rather than as a free parameter.
-
-**Still open:**
-
-*None.* Every question raised at first issue is resolved. Further changes to the values above should come from playtest evidence rather than desk reasoning.
-
-**Known gaps, not open questions, but work not yet done.** These are scoped deliberately: the reference firmware is complete, and what remains below is the capstone team's build.
-
-| Gap | Status |
-|---|---|
-| **Game daemon** (§13, charter): scenario loading, objective evaluation, command log, saves by replay | Specified, not built. This is the students' primary deliverable; its acceptance gate is the conformance suite shipped with the scenario format. |
-| **Scenario packages** | **Specified and exercised.** See the *Scenario Package Format* specification, two reference packages under `scenarios/`, a reference evaluator and validator in `firmware/tools/`, and a 14-check conformance gate in `conformance/`. |
-| **Harness tier** (§6, Renode): sensors as true MMIO at the same addresses rather than SIM-tier RAM | Specified with identical observable behavior; only the QEMU SIM tier is built. |
-| **Web front end** (charter), console, telemetry view, objective status | Not started. |
-
----
-
-*Version 1.0: the firmware described here is built, boots under QEMU and macOS, and passes a 99-check end-to-end suite. §15 carries no open questions; what remains is the platform around the firmware, listed above.*
