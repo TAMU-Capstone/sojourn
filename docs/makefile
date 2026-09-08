@@ -46,7 +46,7 @@ BROWSER := $(shell for b in \
     done)
 
 .PHONY: all docx register manual deck check deps clean
-all: register docx manual
+all: requirements.md docx manual
 
 # ---- Word exports -------------------------------------------------------
 docx: $(DOCXS)
@@ -58,12 +58,24 @@ docx: $(DOCXS)
 	  echo "SKIP $@ — run 'make deps' first"; exit 0; }
 	@$(NODE) build_docx.js $< $@
 
-# requirements.md is generated, so its export depends on the register
-requirements.docx: register
+# requirements.docx follows requirements.md like every other export; the
+# dependency below is what regenerates requirements.md when the charter moves.
 
 # ---- the requirements register ------------------------------------------
 # Generated from charter.md: every requirement has exactly one identifier and
 # it is defined there. Never edit requirements.md by hand.
+# Generated from charter.md, so it is rebuilt when charter.md is newer. It
+# used to hang off the phony `register` target, which made it unconditionally
+# out of date: every `make docx` rewrote requirements.docx, and because a .docx
+# embeds a build timestamp the bytes changed each time, so git reported the
+# file modified for ever. This rule rebuilds it when, and only when, the
+# charter has actually changed.
+requirements.md: charter.md $(TOOLS)/requirements.py
+	@$(PYTHON) $(TOOLS)/requirements.py --write
+
+requirements.csv: requirements.md
+
+# Force it, whatever the timestamps say.
 register:
 	@$(PYTHON) $(TOOLS)/requirements.py --write
 
