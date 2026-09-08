@@ -3,6 +3,7 @@ const {
   Table, TableRow, TableCell, WidthType, ShadingType, LevelFormat,
 } = require('docx');
 const fs = require('fs');
+const JSZip = require('jszip');
 
 const ACCENT = '1F3864', LIGHT = 'D9E2F3', GRAY = '595959';
 const TOTAL = 9360;
@@ -125,7 +126,42 @@ const doc = new Document({
   sections: [{ properties: { page: { size: { width: 12240, height: 15840 }, margin: { top: 1300, bottom: 1300, left: 1300, right: 1300 } } }, children }],
 });
 
-Packer.toBuffer(doc).then(buf => {
-  fs.writeFileSync(OUT, buf);
-  console.log('written', buf.length);
-});
+// Reproducible output.
+//
+// A .docx is a zip, and two things inside it change on every build even when
+// the document does not: the created/modified timestamps written into
+// docProps/core.xml, and the modification date stamped on every zip entry.
+// Together they meant a rebuild always produced new bytes, so a generated
+// export showed as modified in git for ever and there was no way to tell a
+// real content change from a no-op rebuild.
+//
+// Both are pinned to a fixed instant below, which makes the output a pure
+// function of the input: identical markdown gives a byte-identical .docx.
+// The date is arbitrary but must be >= 1980, the zip format's epoch.
+const FIXED_DATE = new Date(Date.UTC(2000, 0, 1, 0, 0, 0));
+const FIXED_STAMP = '2000-01-01T00:00:00Z';
+
+Packer.toBuffer(doc)
+  .then(buf => JSZip.loadAsync(buf))
+  .then(async (zip) => {
+    const core = 'docProps/core.xml';
+    if (zip.files[core]) {
+      const xml = (await zip.file(core).async('string'))
+        .replace(/<dcterms:created([^>]*)>[^<]*<\/dcterms:created>/,
+                 `<dcterms:created$1>${FIXED_STAMP}</dcterms:created>`)
+        .replace(/<dcterms:modified([^>]*)>[^<]*<\/dcterms:modified>/,
+                 `<dcterms:modified$1>${FIXED_STAMP}</dcterms:modified>`);
+      zip.file(core, xml);                    // resets this entry's date...
+    }
+    for (const name of Object.keys(zip.files)) zip.files[name].date = FIXED_DATE;
+    return zip.generateAsync({               // ...so stamp them all afterwards
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 9 },
+    });
+  })
+  .then(buf => {
+    fs.writeFileSync(OUT, buf);
+    console.log('written', buf.length);
+  })
+  .catch(err => { console.error(err); process.exit(1); });

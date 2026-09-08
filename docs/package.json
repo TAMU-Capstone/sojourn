@@ -3,6 +3,7 @@
   "private": true,
   "description": "Document build for the Sojourn capstone. `npm install` here, then `make`.",
   "dependencies": {
-    "docx": "9.6.1"
+    "docx": "9.6.1",
+    "jszip": "3.10.1"
   }
 }
