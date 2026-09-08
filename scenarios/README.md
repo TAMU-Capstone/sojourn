@@ -1,6 +1,6 @@
 # Reference Scenario Packages
 
-Two worked packages, both **pure content** — no executable predicates, no
+Two worked packages, both **pure content**: no executable predicates, no
 platform code. They are the material the *Scenario Package Format*
 specification (`docs/scenario_format.md`) describes, and the thing to copy
 when authoring a third.
@@ -20,8 +20,8 @@ python3 firmware/tools/scenario_eval.py --scenario scenarios/comms-triage \
     --script scenarios/comms-triage/solution.txt --verbose
 ```
 
-Each package carries a `solution.txt` — the intended move list, in plain text,
-one uplink per line — and `solution.jsonl`, the command log that move list
+Each package carries a `solution.txt`, the intended move list, in plain text,
+one uplink per line, and `solution.jsonl`, the command log that move list
 produces. These are instructor material. They are also the fixtures the
 conformance suite replays, which is what keeps them honest: if the firmware
 changes in a way that breaks a scenario, `conformance/run_conformance.py`
@@ -41,7 +41,7 @@ rather than fast-forwarding.
 3. Write `briefing.md` in fiction. It is shipped verbatim and it is the only
    thing the player reads before starting.
 4. Write the objectives. Address memory as `{"sym": ..., "field": ...}`
-   wherever a field name exists — the build reads config offsets out of the
+   wherever a field name exists, the build reads config offsets out of the
    target's DWARF, so there is no reason to compute one by hand.
 5. Validate, then solve it yourself with `--script`. A scenario nobody has
    solved end to end is not finished.
@@ -55,5 +55,5 @@ these two packages:
 - **An `event` predicate can match an event the scenario itself caused.**
   The first version of `attempt-redeploy` completed off the antenna's *failure*
   event, before the player had done anything at all. If an objective is meant
-  to record a player action, assert on the action — the command log, or a
-  control-register bit — and use telemetry for the consequence.
+  to record a player action, assert on the action: the command log, or a
+  control-register bit, and use telemetry for the consequence.

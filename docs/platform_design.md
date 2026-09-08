@@ -15,11 +15,11 @@
 
 Three documents are normative and you must conform to them:
 
-- **Firmware Design Specification** — the probe, its memory map, its protocols.
-- **Scenario Package Format** — what a scenario is, and the one daemon entry point conformance tests.
-- **Introspection API** — how the daemon reads probe memory. Prescriptive down to the wire.
+- **Firmware Design Specification**: the probe, its memory map, its protocols.
+- **Scenario Package Format**: what a scenario is, and the one daemon entry point conformance tests.
+- **Introspection API**: how the daemon reads probe memory. Prescriptive down to the wire.
 
-This document is different. It is **one known-good way to build the platform**, written because a schema and a conformance suite tell you what *must* be true without telling you where to start on a Monday morning. Nothing here is a requirement. If you have a better decomposition, take it — but be able to say what problem your version solves that this one does not, because every structure below exists to prevent a specific failure, and those failures are named.
+This document is different. It is **one known-good way to build the platform**, written because a schema and a conformance suite tell you what *must* be true without telling you where to start on a Monday morning. Nothing here is a requirement. If you have a better decomposition, take it, but be able to say what problem your version solves that this one does not, because every structure below exists to prevent a specific failure, and those failures are named.
 
 The parts genuinely left to you: implementation language, web framework, storage engine, process model, module boundaries, the console's visual design, and how you test. The parts that are not yours to choose are in the three normative documents, and they are a small fraction of the system.
 
@@ -57,8 +57,8 @@ Four boundaries, and each is a place where a mistake is expensive:
 
 | Boundary | Rule |
 |---|---|
-| Console ↔ daemon | The console renders and types. It holds no game rules — no objective evaluation, no budget arithmetic, no delay simulation. A player with dev-tools open must not be able to complete an objective. |
-| Daemon ↔ packages | Read-only, at load. The daemon contains no scenario-specific constant (charter R11.3). If you find yourself writing `if scenario_id == ...`, the format is missing something — say so rather than special-casing. |
+| Console ↔ daemon | The console renders and types. It holds no game rules, no objective evaluation, no budget arithmetic, no delay simulation. A player with dev-tools open must not be able to complete an objective. |
+| Daemon ↔ packages | Read-only, at load. The daemon contains no scenario-specific constant (charter R11.3). If you find yourself writing `if scenario_id == ...`, the format is missing something: say so rather than special-casing. |
 | Daemon ↔ probe | Two channels, never confused. See the Introspection API. |
 | Daemon ↔ volume | All player state lives here (R14.1). Nothing survives in the container. |
 
@@ -122,9 +122,9 @@ Step 4 before 5–8 is deliberate: a command applied this tick must be visible t
 
 When a player types a command, in order:
 
-1. **Syntax** — non-empty, ≤ the probe's line limit. Reject locally.
-2. **Checksum** — if `link.require_checksum`, verify or append. (Decide once whether the console or the daemon appends; document it. The reference evaluator appends in the daemon.)
-3. **Budget** — if the resource is exhausted, refuse *at the daemon* with a clear message. A refused-for-budget command is **not** sent to the probe and **not** logged, because it never happened. This differs from a command the probe rejects, which is logged (format spec §8).
+1. **Syntax**: non-empty, ≤ the probe's line limit. Reject locally.
+2. **Checksum**: if `link.require_checksum`, verify or append. (Decide once whether the console or the daemon appends; document it. The reference evaluator appends in the daemon.)
+3. **Budget**: if the resource is exhausted, refuse *at the daemon* with a clear message. A refused-for-budget command is **not** sent to the probe and **not** logged, because it never happened. This differs from a command the probe rejects, which is logged (format spec §8).
 4. **Enqueue** with a send time of now + `uplink_delay_s`.
 5. On send: write to the probe, charge the budget, append to the log with the probe's reply.
 
@@ -152,7 +152,7 @@ This single mechanism gives you saves, command history, grading evidence, and po
 
 The probe already holds up its end: sensor physics run off a fixed PRNG seed, the imaging easter egg rolls deterministically, and halting for introspection does not advance the guest clock. Your side of the bargain is that the daemon introduces nothing non-deterministic.
 
-**The trap.** `t_ms` is *probe uptime when the command was applied*, not wall-clock and not when the player pressed Enter. Log wall-clock and replay reproduces a different session on a faster machine — and it will pass every test you write on your own laptop.
+**The trap.** `t_ms` is *probe uptime when the command was applied*, not wall-clock and not when the player pressed Enter. Log wall-clock and replay reproduces a different session on a faster machine, and it will pass every test you write on your own laptop.
 
 Design replay first, not last. A daemon that plays first and has replay bolted on in week 10 usually cannot be made deterministic without rewriting the loop.
 
@@ -167,7 +167,7 @@ One writer each. Where two components can write the same thing, decide now.
 | Probe memory | The player, via `POKE` | The probe |
 | Objective states | Session | Memory, derived; rebuilt by replay |
 | Command log | Command channel, on send | Volume, append-only |
-| Budget counters | Budget meter, on send | Derived from the log — do not persist separately |
+| Budget counters | Budget meter, on send | Derived from the log: do not persist separately |
 | Profile | Profile store | Volume |
 | Frame history | Session | Memory, bounded ring |
 
@@ -177,11 +177,11 @@ Budget being *derived* rather than stored matters: two sources of truth for a co
 
 ## 8. The Console
 
-Diegetic — a mission-control console, not a quiz app. Panels:
+Diegetic, a mission-control console, not a quiz app. Panels:
 
 | Panel | Content |
 |---|---|
-| **Downlink** | Raw `TLM` hex as it arrives, scrolling. Decoding it is the game — do not decode it here. |
+| **Downlink** | Raw `TLM` hex as it arrives, scrolling. Decoding it is the game, do not decode it here. |
 | **Uplink** | Command line, history, and an in-flight indicator with a countdown for each command still crossing the gap. |
 | **Mission status** | The objective list. See below. |
 | **Event ticker** | ACK/NAK, reboots, mode changes. |
@@ -194,7 +194,7 @@ Diegetic — a mission-control console, not a quiz app. Panels:
 This is the contract the format's `objectives.json` exists to feed, and the part that most resembles a quest log.
 
 ```
-MISSION STATUS — Bandwidth                        rev 3
+MISSION STATUS, Bandwidth                        rev 3
 
   ✓  Diagnose the downlink                        complete   frame 5
   ✓  Attempt to redeploy the dish                 complete   frame 6
@@ -217,10 +217,10 @@ Rendering rules:
 
 | Field | When shown |
 |---|---|
-| `title` | Always, for `active` and `complete`. For `locked`, show the title greyed or hide the objective entirely — pick one and be consistent. |
-| `brief` | On transition to `active`. Never for `locked` — it leaks the next step. |
+| `title` | Always, for `active` and `complete`. For `locked`, show the title greyed or hide the objective entirely: pick one and be consistent. |
+| `brief` | On transition to `active`. Never for `locked`; it leaks the next step. |
 | `partial[].text` | While `active`, the first entry whose `when` holds this frame. Clears when none hold. Mark it visually as diagnosis, not instruction. |
-| `hints[].text` | While `active` and incomplete, once the objective has been active for `after_frames` frames. Cumulative — revealing hint 2 does not hide hint 1. |
+| `hints[].text` | While `active` and incomplete, once the objective has been active for `after_frames` frames. Cumulative, revealing hint 2 does not hide hint 1. |
 | `points`, `first_frame` | On completion. |
 
 Two things the console must not do: re-order objectives (declaration order is authored), and show a `locked` objective's `brief` or `hints`.
@@ -255,11 +255,11 @@ The panel modelled on NASA's DSN Now display. It is the piece that makes the del
 | Spacecraft antenna | The `COMMS` channel's antenna field, when the scenario decodes it |
 | Link lost | No frame for more than two telemetry periods |
 
-**Derive the complex from probe uptime, not the wall clock.** Earth turns, so each complex holds a deep-space target for roughly eight hours; rotating on that period gives a handover the player will actually notice across a long session. Using probe uptime rather than the host clock means a replayed session shows the same station sequence as the original, which is R25.9 and is the same determinism argument as everywhere else. The panel is display-only today, so a wall clock would not corrupt grading — but the moment someone adds pass windows that gate the uplink, it would, and by then the code is written.
+**Derive the complex from probe uptime, not the wall clock.** Earth turns, so each complex holds a deep-space target for roughly eight hours; rotating on that period gives a handover the player will actually notice across a long session. Using probe uptime rather than the host clock means a replayed session shows the same station sequence as the original, which is R25.9 and is the same determinism argument as everywhere else. The panel is display-only today, so a wall clock would not corrupt grading, but the moment someone adds pass windows that gate the uplink, it would, and by then the code is written.
 
 **Do not fake activity.** A dish animating when nothing is being received teaches the player to ignore the panel. If the link is down, show it down.
 
-**A note on scope.** Real station pass windows — the probe reachable only when a complex has it in view, uplinks queuing until the next pass — are a genuinely good mechanic and are **not in scope**. If they are added later they become objective-relevant, and the determinism rule above is what will make that possible without a rewrite.
+**A note on scope.** Real station pass windows (the probe reachable only when a complex has it in view, uplinks queuing until the next pass) are a genuinely good mechanic and are **not in scope**. If they are added later they become objective-relevant, and the determinism rule above is what will make that possible without a rewrite.
 
 ### 8.3 Session lifecycle
 
@@ -276,14 +276,14 @@ The panel modelled on NASA's DSN Now display. It is the piece that makes the del
 | Action | What it does | What it must not do |
 |---|---|---|
 | **Start** | Boot a probe from the package ROM, apply setup, begin the loop | Start a second probe. Starting while running requires confirmation and aborts the first (R26.2) |
-| **Abort** | Kill the emulator, release ports, keep the log | Delete the log, or lose objective state — both are recovered by replay |
+| **Abort** | Kill the emulator, release ports, keep the log | Delete the log, or lose objective state: both are recovered by replay |
 | **Save** | Write a portable archive: log, scenario id and revision, profile | Require stopping first, or snapshot emulator memory |
 | **Load** | Restore by replay | Load an archive for a scenario that is not installed |
-| **Exit** | Kill the emulator, flush the log, leave no orphan process | Leave a QEMU process holding a port — this is the one users will actually hit |
+| **Exit** | Kill the emulator, flush the log, leave no orphan process | Leave a QEMU process holding a port; this is the one users will actually hit |
 
 **Aborting is not a failure path, it is a normal one.** Players will start a scenario, realise they want to begin again, and expect that to be instant and clean. Make it a first-class action with a confirmation, not an error case.
 
-**The orphaned emulator is the bug you will ship.** A probe launched as a child process and not reaped on exit holds its TCP ports, and the next start fails with an error that looks nothing like its cause. Make the supervisor own process lifetime from the beginning, kill on every exit path including exceptions, and verify with process inspection — which is why R26.6 is written to be checked that way.
+**The orphaned emulator is the bug you will ship.** A probe launched as a child process and not reaped on exit holds its TCP ports, and the next start fails with an error that looks nothing like its cause. Make the supervisor own process lifetime from the beginning, kill on every exit path including exceptions, and verify with process inspection, which is why R26.6 is written to be checked that way.
 
 ### 8.4 API sketch
 
@@ -308,11 +308,11 @@ Push deltas, not the whole world. A console that re-renders everything each fram
   profile.json                    display name (R14.2), created on first run
   sessions/
     sojourn.comms.triage/
-      log.jsonl                   the command log — the save file
+      log.jsonl                   the command log, the save file
       meta.json                   scenario revision, started_at, completion times (R16)
 ```
 
-Keyed on scenario `id`. `meta.json` is a cache of things derivable from replay, kept so the scenario list can show progress without replaying everything at startup — but replay is authoritative, and if the two disagree the log wins.
+Keyed on scenario `id`. `meta.json` is a cache of things derivable from replay, kept so the scenario list can show progress without replaying everything at startup, but replay is authoritative, and if the two disagree the log wins.
 
 R15.2 requires a volume written by version N to load in every later version. The mechanism that gives you this for free is that the log is append-only and its records carry only fields the format defines. Resist adding daemon-internal fields to log records.
 
@@ -322,9 +322,9 @@ R15.2 requires a volume written by version N to load in every later version. The
 
 | Failure | Behavior |
 |---|---|
-| Probe crashes or exits | Restart from ROM, replay the log, tell the player. This is the same code path as resume — if it is not, one of them is untested. |
+| Probe crashes or exits | Restart from ROM, replay the log, tell the player. This is the same code path as resume, if it is not, one of them is untested. |
 | Introspection connection lost | Abort the pass, leave states unchanged, attempt reconnect, tell the player grading is degraded. **Never** treat a failed read as false (Introspection API I15). |
-| Frame fails CRC | Count it, show it in the ticker, skip evaluation for that frame. This is normal — it is a deep-space link. |
+| Frame fails CRC | Count it, show it in the ticker, skip evaluation for that frame. This is normal; it is a deep-space link. |
 | Package fails validation | Refuse to list it, with the validator's message. Do not half-load. |
 | `app_crc32` mismatch | Refuse to start, and say the package and firmware disagree. Do not let it fail later as a mysterious assertion. |
 | Player bricks the probe | Nothing. The watchdog recovers it, the reboot counter increments, and the player sees it in telemetry. Do not intervene; this is a designed experience. |
@@ -337,10 +337,10 @@ R20.1 wants 70% line coverage on the evaluator and loader; R20.2 wants an end-to
 
 Four layers, fastest first:
 
-1. **Evaluator unit tests** — no emulator. Feed synthetic frames and a fake memory callable. Every predicate op, every combinator, the temporal ones especially. This is where the coverage requirement is met, and it runs in a second.
-2. **Loader/validator tests** — the nine seeded-defect packages in `conformance/defects/` are already written and each must be rejected by its specific rule.
-3. **Replay determinism** — replay one log twice, assert identical objective states and identical `first_frame` values. Cheap, and it catches the entire class of §6 bugs.
-4. **Conformance** — `conformance/run_conformance.py --daemon "<your command>"`. Fifteen checks. This is the acceptance gate; get it passing early and keep it passing, rather than aiming at it in week 12.
+1. **Evaluator unit tests**: no emulator. Feed synthetic frames and a fake memory callable. Every predicate op, every combinator, the temporal ones especially. This is where the coverage requirement is met, and it runs in a second.
+2. **Loader/validator tests**: the nine seeded-defect packages in `conformance/defects/` are already written and each must be rejected by its specific rule.
+3. **Replay determinism**: replay one log twice, assert identical objective states and identical `first_frame` values. Cheap, and it catches the entire class of §6 bugs.
+4. **Conformance**: `conformance/run_conformance.py --daemon "<your command>"`. Fifteen checks. This is the acceptance gate; get it passing early and keep it passing, rather than aiming at it in week 12.
 
 The `grader-hygiene` fixture deserves specific mention: it fails if you evaluate objectives over the player's command channel. If it fails on your first run, read the Introspection API before writing anything else.
 
@@ -352,7 +352,7 @@ Mapped to the charter's milestones. The ordering exists to make the risky things
 
 | Milestone | Build | Done when |
 |---|---|---|
-| **M1** wk 3 | Emulator supervisor; command channel; telemetry decoder; introspection client | You can boot a probe, type `PING`, see `ACK`, print decoded frames, and read `tlm_priority` over GDB — from a script, no UI |
+| **M1** wk 3 | Emulator supervisor; command channel; telemetry decoder; introspection client | You can boot a probe, type `PING`, see `ACK`, print decoded frames, and read `tlm_priority` over GDB: from a script, no UI |
 | **M2** wk 6 | Delay queue; command log; evaluator; session; a minimal console | `first-contact` is playable end to end in a browser and its three objectives complete |
 | **M3** wk 9 | Scenario loader + validator; persistence; replay; profiles | `comms-triage` loads from the content directory with no code change; restart mid-session restores state; `run_conformance.py` passes |
 | **M4** wk 12 | Partial states, hints, budget panel, polish; `heater-runaway` added | A naive player completes `comms-triage` unaided; adding the third scenario touched no platform code (R11.2) |
@@ -388,4 +388,4 @@ If any of those choices turn out to be constrained by something in the normative
 
 ---
 
-*Version 1.0 — advisory. The normative documents are the Firmware Design Specification, the Scenario Package Format, and the Introspection API.*
+*Version 1.0: advisory. The normative documents are the Firmware Design Specification, the Scenario Package Format, and the Introspection API.*

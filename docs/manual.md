@@ -1,4 +1,4 @@
-# SOJOURN — Mission Operations Manual
+# SOJOURN, Mission Operations Manual
 
 ### Interplanetary Survey Agency · Deep Space Flight Operations
 
@@ -11,7 +11,7 @@ were lost to media degradation and are marked accordingly.*
 > This is the only surviving copy of the Sojourn operations manual. Several
 > pages, tables, and one full appendix could not be recovered. Where a
 > figure or table is missing, the flight software itself remains the
-> authority — read it directly. The probe still answers. That is what
+> authority, read it directly. The probe still answers. That is what
 > matters.
 
 ---
@@ -31,7 +31,7 @@ The flight software source code did not survive. What survives is this
 manual, the ground station, and the probe. Mission continuation
 therefore proceeds the way the late-program flight team learned to work:
 by reading and, where necessary, **rewriting the probe's memory
-directly** over the uplink — powering down failing hardware, adjusting
+directly** over the uplink, powering down failing hardware, adjusting
 mission parameters, and installing corrections, verified only by what
 returns on the downlink.
 
@@ -53,7 +53,7 @@ console. Two streams share the link:
 
 Because of signal delay and bandwidth limits, mission control works in a
 deliberate rhythm: observe the downlink, decide on a single change,
-uplink it, then wait for the telemetry that confirms — or refutes — the
+uplink it, then wait for the telemetry that confirms, or refutes, the
 result. Plan each command before you send it.
 
 ---
@@ -68,7 +68,7 @@ VERB [arguments] *CCCC
 
 `CCCC` is a **CRC-16/CCITT (0xFFFF init, polynomial 0x1021)** checksum,
 written as four hexadecimal digits, computed over **every character that
-precedes the `*`** — including the separating space. The probe
+precedes the `*`**, including the separating space. The probe
 recomputes the checksum and rejects the command (`NAK E01`) if it does
 not match. This guards against corruption on the long uplink path.
 
@@ -86,12 +86,12 @@ optional on addresses.
 
 | Verb | Arguments | Action | Success reply |
 |---|---|---|---|
-| `PING` | — | Liveness check | `ACK PING` |
+| `PING` | - | Liveness check | `ACK PING` |
 | `PEEK` | `addr len` | Read `len` bytes (1–64, decimal) from `addr` | `ACK PEEK <hex bytes>` |
 | `POKE` | `addr b0[b1…]` | Write hex bytes (up to 32) to `addr` | `ACK POKE <count>` |
-| `STAT` | — | Report probe status | `ACK STAT mode=… up=…s reboots=… fault=… load=…mW` |
-| `SAFE` | — | Command safe mode (see §7.3) | `ACK SAFE` |
-| `NOOP` | — | No operation (accepted, does nothing) | `ACK NOOP` |
+| `STAT` | - | Report probe status | `ACK STAT mode=… up=…s reboots=… fault=… load=…mW` |
+| `SAFE` | - | Command safe mode (see §7.3) | `ACK SAFE` |
+| `NOOP` | - | No operation (accepted, does nothing) | `ACK NOOP` |
 
 ### 3.2 Verified Examples
 
@@ -117,10 +117,10 @@ A command that is not accepted returns `NAK` and a code:
 
 | Code | Meaning |
 |---|---|
-| `E01` | Bad checksum — the CRC did not match. Recompute it. |
+| `E01` | Bad checksum, the CRC did not match. Recompute it. |
 | `E02` | Unknown verb. |
 | `E03` | Address not mapped (see §4). |
-| `E04` | Protected region — the write was refused (see §4.2). |
+| `E04` | Protected region, the write was refused (see §4.2). |
 | `E05` | Malformed arguments or length out of range. |
 | `E06` | Subsystem busy; retry shortly. |
 
@@ -141,13 +141,13 @@ map survived; the detailed layout table (ISA-SOJ-MEM-002) was lost.
 |---|---|---|
 | `0x00000000`–`0x0003FFFF` | Boot firmware, recovery services, and the master program image (read-only store) | **No** |
 | `0x20000000`–`0x20000FFF` | Reserved system region (recovery state, timers) | **No** |
-| `0x20001000`–… | **Flight program & working memory** — the running software and its data | **Yes** |
+| `0x20001000`–… | **Flight program & working memory**, the running software and its data | **Yes** |
 | high memory | Peripheral register interface; imaging frame store | Yes |
 
-> ▓▓▓ **TABLE 4-2 — SUBSYSTEM BASE ADDRESSES** ▓▓▓
+> ▓▓▓ **TABLE 4-2: SUBSYSTEM BASE ADDRESSES** ▓▓▓
 > ▓▓▓ *pages missing* ▓▓▓
-> *The table giving the base address of each subsystem's register block —
-> sensors, camera, and others — was not recovered. These addresses can be
+> *The table giving the base address of each subsystem's register block,
+> sensors, camera, and others: was not recovered. These addresses can be
 > re-derived by examining the flight program (§8) or by careful `PEEK`
 > survey of the peripheral region.*
 
@@ -161,7 +161,7 @@ regions, so do not waste uplink attempts on them.
 
 The **running flight program** in working memory (from `0x20001000`) is
 **not** protected. Writes there take effect immediately on the live
-software. This is the mechanism by which the mission is maintained — and
+software. This is the mechanism by which the mission is maintained, and
 the mechanism by which it can be lost. See §7.
 
 ---
@@ -171,7 +171,7 @@ the mechanism by which it can be lost. See §7.
 Each telemetry frame is transmitted as one line: the literal `TLM`, a
 space, then the frame encoded as hexadecimal. Decode the hex to bytes,
 then parse as below. All multi-byte fields are **big-endian** in the
-frame (note: this differs from memory, which is little-endian — the
+frame (note: this differs from memory, which is little-endian; the
 telemetry encoder byte-swaps for the downlink).
 
 ### 5.1 Frame Structure
@@ -212,7 +212,7 @@ ID | LEN | value (LEN bytes)
 
 A channel is present **only when its subsystem is powered and being
 reported**. A powered-down or unreported sensor's channel is simply
-**absent** from the frame — it does not appear as zero. Watching a
+**absent** from the frame; it does not appear as zero. Watching a
 channel appear or disappear is the primary way to confirm that an uplink
 had the effect you intended.
 
@@ -233,7 +233,7 @@ had the effect you intended.
 
 ### 5.4 Housekeeping Channel (0x60)
 
-Eight bytes reporting the state of the spacecraft's own subsystems —
+Eight bytes reporting the state of the spacecraft's own subsystems,
 the only view the ground has of them:
 
 | Offset | Size | Field |
@@ -264,7 +264,7 @@ Six bytes describing the state of the downlink itself:
 
 Sojourn carries two antennas. The **high gain** is a steerable dish:
 narrow-beam, high rate, and it carries a complete telemetry frame. The
-**low gain** is a fixed wide-beam antenna — nothing to deploy and
+**low gain** is a fixed wide-beam antenna, nothing to deploy and
 nothing to aim, but a fraction of the rate, and a budget smaller than a
 full frame. When the probe is using it, the flight software transmits
 what it considers most important and **drops the rest entirely**. A
@@ -280,7 +280,7 @@ more.
 > remaining bandwidth is a table in working memory, and the decision it
 > made is not necessarily the one you would make.
 
-> ▓▓▓ **APPENDIX C — RESERVED / DIAGNOSTIC CHANNELS** ▓▓▓
+> ▓▓▓ **APPENDIX C: RESERVED / DIAGNOSTIC CHANNELS** ▓▓▓
 > ▓▓▓ *appendix missing* ▓▓▓
 > *Flight crews reported occasional channels in the downlink not listed in
 > Table 5-3 above. The appendix cataloguing them was not recovered. If you
@@ -324,7 +324,7 @@ internal list of which sensors it actively reports; that list is part of
 the working program, not these registers.)
 
 > ⚠ Powering a sensor off is a memory write to the live probe. Confirm the
-> **slot base address** before you send it — writing the right bit to the
+> **slot base address** before you send it, writing the right bit to the
 > wrong address can corrupt the flight program.
 
 ### 6.2 Imaging Camera
@@ -359,7 +359,7 @@ stars. A well-exposed frame maximizes `STARS` at low `SAT_PCT`. These
 statistics are reported in the downlink (§6.3), so exposure can be tuned
 from telemetry alone.
 
-> ▓▓▓ **TABLE 6-4 — ONBOARD TARGET LIST** ▓▓▓
+> ▓▓▓ **TABLE 6-4: ONBOARD TARGET LIST** ▓▓▓
 > ▓▓▓ *pages missing* ▓▓▓
 > *The `TARGET` register selects an entry from a list of survey targets
 > stored in the flight program's configuration data. The catalogue of
@@ -381,7 +381,7 @@ frame. All fields are 16-bit, big-endian:
 | 10 | Resolved star count |
 
 **Recovering an image.** The pixel data is never downlinked in
-telemetry — only these statistics. To retrieve an actual frame, read the
+telemetry, only these statistics. To retrieve an actual frame, read the
 frame store directly with `PEEK`, using the address in `FRAME_ADDR` and
 the size in `FRAME_LEN` (9216 bytes), 64 bytes per command. Reassemble
 the bytes on the ground into a 96×96 image. This is slow and deliberate;
@@ -400,7 +400,7 @@ on top of the transmitter, so the high gain is the more expensive of the
 two to operate.
 
 **Low-gain (LGA).** A fixed 8.0 dBi antenna. Nothing deploys, nothing is
-aimed, and it cannot be lost to a pointing fault — which is why it is the
+aimed, and it cannot be lost to a pointing fault, which is why it is the
 fallback. It carries a fraction of the rate.
 
 Selection is normally automatic. It can be taken over from the ground
@@ -449,7 +449,7 @@ from the block's base address (Table 4-2, *not recovered*).
 | 3 | `POINT_ERR` | Dish boresight outside tolerance |
 | 4 | `ON_LGA` | Downlinking through the low-gain antenna |
 
-> ▓▓▓ **§6.5.1 — BORESIGHT MAINTENANCE** ▓▓▓
+> ▓▓▓ **§6.5.1: BORESIGHT MAINTENANCE** ▓▓▓
 > ▓▓▓ *pages missing* ▓▓▓
 > *The subsection describing how the dish's pointing solution is
 > maintained, what it depends on, and the conditions under which
@@ -475,7 +475,7 @@ this section before writing to working memory.
 
 An independent timer in the protected system region must be serviced
 regularly by healthy flight software. If the software stops servicing it
-— because it has crashed, hung, or been corrupted by a bad uplink — the
+because it has crashed, hung, or been corrupted by a bad uplink: the
 timer expires (after approximately three seconds) and the probe
 **restarts itself**.
 
@@ -487,19 +487,19 @@ from the protected master image** before running it. This means:
 - Any change you wrote to working memory is **erased** on restart. The
   probe returns to its original, as-built behavior.
 - The **reboot counter** in telemetry increments, and **uptime** resets
-  toward zero — your signal that a restart occurred.
+  toward zero, your signal that a restart occurred.
 - The **last-fault** field reports the cause:
 
 | Value | Meaning |
 |---|---|
 | `0` | None (clean start). |
-| `1` | Watchdog timeout — software stopped responding. |
-| `2` | Processor fault — an illegal operation (e.g. execution of a bad address). |
+| `1` | Watchdog timeout, software stopped responding. |
+| `2` | Processor fault, an illegal operation (e.g. execution of a bad address). |
 | `3` | Image integrity failure. |
 
 Recovery is automatic and requires no action from the ground. If you
 brick the probe with a bad write, wait for the reboot; it will come back.
-You will, however, lose every in-memory change you had made — so keep a
+You will, however, lose every in-memory change you had made, so keep a
 record of your commands and be ready to re-send the good ones. (The
 ground station's command history exists for exactly this reason.)
 
@@ -515,9 +515,9 @@ plan.
 
 ## 8. Working With the Flight Program
 
-Several tasks in this manual — locating a subsystem's register base
+Several tasks in this manual, locating a subsystem's register base
 (Table 4-2), finding the target list (Table 6-4), correcting a behavior
-in the running software — require understanding the flight program
+in the running software, require understanding the flight program
 itself. The program image is available for study (it is the read-only
 store described in §4). Standard practice on the late-program flight
 team was to load the image into a disassembler, identify the relevant
@@ -530,9 +530,9 @@ archive lost. The probe, however, has not changed. Everything you need to
 know about it can be learned by reading it.
 
 > ▓▓▓ **CHANGE HISTORY** ▓▓▓
-> Rev A — initial issue, pre-launch.
-> Rev B — updated telemetry channel table; added imaging payload.
-> Rev C — ▓▓▓ *recovered fragment; change list illegible* ▓▓▓
+> Rev A, initial issue, pre-launch.
+> Rev B, updated telemetry channel table; added imaging payload.
+> Rev C, ▓▓▓ *recovered fragment; change list illegible* ▓▓▓
 
 ---
 

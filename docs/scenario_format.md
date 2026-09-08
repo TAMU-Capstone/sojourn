@@ -17,7 +17,7 @@ A **scenario package** is the unit of content in Sojourn. It carries a mission's
 
 This document is **normative for the seam** and deliberately silent about everything behind it.
 
-| Normative here — the platform must conform | The team's design — unconstrained |
+| Normative here, the platform must conform | The team's design, unconstrained |
 |---|---|
 | Package directory layout and file names | Daemon implementation language and internals |
 | `manifest.json` schema | Process model, threading, storage engine |
@@ -54,7 +54,7 @@ comms-triage/
 
 A package **shall** be loadable from a directory or from a `.tar.gz` of that directory with the package root at the archive root.
 
-**Pure content.** A package containing no `checks/` directory is a **pure content package**. Charter objective 4 — a new scenario added with zero platform-code changes — is demonstrated with pure packages. §6.7 states when impurity is permitted.
+**Pure content.** A package containing no `checks/` directory is a **pure content package**. Charter objective 4, a new scenario added with zero platform-code changes, is demonstrated with pure packages. §6.7 states when impurity is permitted.
 
 ---
 
@@ -107,12 +107,12 @@ A package **shall** be loadable from a directory or from a `.tar.gz` of that dir
 | `link.uplink_delay_s` / `downlink_delay_s` | yes | One-way transmission delay the daemon enforces. |
 | `link.require_checksum` | no, default `true` | Whether uplinks must carry the CRC-16 suffix. |
 | `link.budget.writes` / `.reads` | no | Command allowance (charter R4.2/R4.3: state-changing uplinks and reads are metered separately). Absent means unmetered. |
-| `console.decode` | no, default `[]` | Channel names the console may present as decoded values in its spacecraft read-out. See below — this is a **gameplay** setting, not a display preference. |
+| `console.decode` | no, default `[]` | Channel names the console may present as decoded values in its spacecraft read-out. See below; this is a **gameplay** setting, not a display preference. |
 | `console.dsn_complex` | no, default `"auto"` | Which Deep Space Network complex holds the link: `"auto"` rotates with probe uptime, or name one of `"goldstone"`, `"madrid"`, `"canberra"` to pin it. |
 
-**`console.decode` decides how much of the game the console gives away.** Decoding the downlink is a core activity — charter R10.1 requires that every channel documented in the recovered manual be decodable from the manual and captured frames alone, and R10.2 requires at least one channel that the manual does not document. A console that decodes everything hands the player the answer to both.
+**`console.decode` decides how much of the game the console gives away.** Decoding the downlink is a core activity, charter R10.1 requires that every channel documented in the recovered manual be decodable from the manual and captured frames alone, and R10.2 requires at least one channel that the manual does not document. A console that decodes everything hands the player the answer to both.
 
-The rule is therefore: **the console may decode exactly what the mission's documentation already explains, and nothing else.** A real ground station has decoders for its documented formats; it does not have a decoder for a channel nobody has written down. So a package lists the channels its manual covers, and every other channel — the undocumented `AUX`, anything a scenario deliberately hides — appears only as raw hexadecimal in the frame feed, for the player to work out.
+The rule is therefore: **the console may decode exactly what the mission's documentation already explains, and nothing else.** A real ground station has decoders for its documented formats; it does not have a decoder for a channel nobody has written down. So a package lists the channels its manual covers, and every other channel (the undocumented `AUX`, anything a scenario deliberately hides) appears only as raw hexadecimal in the frame feed, for the player to work out.
 
 The default is the empty list, meaning raw only. A tutorial package opts in generously; a package built around discovering the telemetry format opts in to little or nothing.
 
@@ -135,15 +135,15 @@ A scenario is bound to one firmware build. `symbols.json` and `memmap.json` are 
 
 Assertions reference **symbols by name**, not raw addresses (§6.3). This is deliberate: a firmware rebuild moves addresses, and a package that named raw addresses would silently begin asserting against the wrong memory. Naming symbols means a rebuild requires copying two JSON files and nothing else.
 
-The `fields` map carries struct member offsets — currently the mission config block — read from the **DWARF of the target build**, not recomputed on the host. Authors therefore write `{"sym": "g_config", "field": "hga_fail_after_s"}` rather than counting bytes through a struct with mixed 8-, 16- and 32-bit members and compiler padding. Hand-computed offsets are the single most likely authoring error in this format, and this removes the opportunity.
+The `fields` map carries struct member offsets, currently the mission config block, read from the **DWARF of the target build**, not recomputed on the host. Authors therefore write `{"sym": "g_config", "field": "hga_fail_after_s"}` rather than counting bytes through a struct with mixed 8-, 16- and 32-bit members and compiler padding. Hand-computed offsets are the single most likely authoring error in this format, and this removes the opportunity.
 
-> **Instructor note.** `symbols.json` is authoring material and must not reach the player — charter R19 forbids shipping symbol maps in the player image. The package as *authored* contains it; the package as *delivered* is filtered by the build. Keep the authoring copy in the scenario source repository, not in the container.
+> **Instructor note.** `symbols.json` is authoring material and must not reach the player, charter R19 forbids shipping symbol maps in the player image. The package as *authored* contains it; the package as *delivered* is filtered by the build. Keep the authoring copy in the scenario source repository, not in the container.
 
 ---
 
 ## 5. Setup: Conditioning the Probe
 
-`setup.json` runs before the player's first frame. It is how a scenario creates the situation it is about — scheduling the antenna failure, degrading a sensor, disabling a capability.
+`setup.json` runs before the player's first frame. It is how a scenario creates the situation it is about, scheduling the antenna failure, degrading a sensor, disabling a capability.
 
 ```json
 {
@@ -161,7 +161,7 @@ The `fields` map carries struct member offsets — currently the mission config 
 | `writes` | Applied in order via the same write path the player uses. Each carries `at` (§6.3) and exactly one of `u8`, `u16`, `u32`, or `hex`. |
 | `settle_frames` | Frames to let elapse after setup before evaluation begins. Default `0`. |
 
-Setup writes are **not** charged against the player's budget and **shall not** appear in the command log — they are initial conditions, not moves.
+Setup writes are **not** charged against the player's budget and **shall not** appear in the command log; they are initial conditions, not moves.
 
 `note` is ignored by the daemon and exists so a package reads as documentation. Authors **should** use it on every setup write; six months later it is the only thing that explains a bare offset.
 
@@ -195,7 +195,7 @@ Setup writes are **not** charged against the player's budget and **shall not** a
 | `points` | no, default `0` | Weight for scoring. |
 | `success` | yes | Predicate (§6.2). When true, the objective becomes `complete`. |
 | `fail` | no | Predicate. When true, the objective becomes `failed`. Evaluated before `success`. |
-| `partial` | no | List of `{ "when": predicate, "text": "..." }`. The first whose `when` holds supplies diagnostic text — the charter's partial-progress states. |
+| `partial` | no | List of `{ "when": predicate, "text": "..." }`. The first whose `when` holds supplies diagnostic text, the charter's partial-progress states. |
 | `retractable` | no, default `false` | If false, `complete` latches: a later frame cannot un-complete it. |
 | `hints` | no | List of `{ "after_frames": N, "text": "..." }`, revealed while the objective is incomplete. |
 
@@ -211,7 +211,7 @@ A predicate is a JSON object with an `op` key. Predicates are pure functions of 
 |---|---|
 | `{"op":"tlm","path":"channels.COMMS.antenna","cmp":"eq","value":1}` | Compare a decoded telemetry field. `path` is dotted into the decoded frame; a missing path makes the predicate **false**, never an error. |
 | `{"op":"channel_present","id":"MAG"}` | The named channel appeared in this frame. |
-| `{"op":"channel_absent","id":"MAG"}` | It did not. Distinct from reading zero — a disabled sensor vanishes. |
+| `{"op":"channel_absent","id":"MAG"}` | It did not. Distinct from reading zero, a disabled sensor vanishes. |
 | `{"op":"event","match":"ANTENNA HGA -> LGA"}` | An event line computed for this frame contains the substring. `"regex": true` switches to a regular expression. |
 | `{"op":"tlm_bits","path":"channels.COMMS.xstat","mask":4,"cmp":"eq","value":4}` | Mask a telemetry field and compare. `value` equal to `mask` means "all these bits set"; `0` means "none set". |
 
@@ -224,9 +224,9 @@ A predicate is a JSON object with an `op` key. Predicates are pure functions of 
 | `{"op":"mem_u32","at":{...},"cmp":"gte","value":100}` | Read a little-endian integer and compare. Also `mem_u8` and `mem_u16`. |
 | `{"op":"mem","at":{...},"len":10,"cmp":"eq","value":"6043000102030405"}` | Compare a byte range against hex. |
 | `{"op":"mem_bits","at":{...},"width":4,"mask":8,"cmp":"eq","value":8}` | Read `width` bytes little-endian, mask, compare. `width` defaults to 4. |
-| `{"op":"mem_changed","at":{...},"len":4}` | The range differs from what it held at scenario start — the plain "did they patch this?" test. |
+| `{"op":"mem_changed","at":{...},"len":4}` | The range differs from what it held at scenario start; the plain "did they patch this?" test. |
 
-> **Bit tests are not optional sugar.** The probe's control and status registers are bit fields — `XCTRL`, `XSTAT`, `CCTRL`, `CSTAT`, every sensor's `CTRL`. Without `mem_bits` / `tlm_bits` a scenario cannot say "the deployment drive was commanded" without also asserting the value of every other bit in the register, which makes the objective break the moment an unrelated bit changes. Both predicates were added after the reference scenario in §11 turned out to need them — see the note there.
+> **Bit tests are not optional sugar.** The probe's control and status registers are bit fields, `XCTRL`, `XSTAT`, `CCTRL`, `CSTAT`, every sensor's `CTRL`. Without `mem_bits` / `tlm_bits` a scenario cannot say "the deployment drive was commanded" without also asserting the value of every other bit in the register, which makes the objective break the moment an unrelated bit changes. Both predicates were added after the reference scenario in §11 turned out to need them, see the note there.
 
 #### Command log
 
@@ -245,7 +245,7 @@ A predicate is a JSON object with an `op` key. Predicates are pure functions of 
 | `{"op":"any","of":[ ... ]}` | At least one holds. |
 | `{"op":"not","of": { ... }}` | The child does not hold. |
 | `{"op":"ever","of": { ... }}` | The child has held in **some** frame so far. Latching. |
-| `{"op":"sustained","frames":3,"of": { ... }}` | The child has held in the last N consecutive frames — the antidote to a one-frame flicker counting as success. |
+| `{"op":"sustained","frames":3,"of": { ... }}` | The child has held in the last N consecutive frames, the antidote to a one-frame flicker counting as success. |
 | `{"op":"within","frames":20,"of": { ... }}` | The child held at least once in the last N frames. |
 
 `all` with an empty `of` is **true**; `any` with an empty `of` is **false**. Stating this prevents two implementations from disagreeing on a degenerate package.
@@ -260,9 +260,9 @@ Every predicate that touches memory takes an `at` object:
 { "addr": "0x2001E204" }                             // permitted, for peripheral registers
 ```
 
-The three forms resolve as follows. `sym` alone is the symbol's address. `sym` + `field` adds the offset from the `fields` map (§4) and is an error if the symbol has no such field. `sym` + `offset` adds a literal byte offset. `addr` is an absolute address — legitimate for the peripheral register blocks, which have fixed addresses by specification and no symbols, and discouraged everywhere else.
+The three forms resolve as follows. `sym` alone is the symbol's address. `sym` + `field` adds the offset from the `fields` map (§4) and is an error if the symbol has no such field. `sym` + `offset` adds a literal byte offset. `addr` is an absolute address, legitimate for the peripheral register blocks, which have fixed addresses by specification and no symbols, and discouraged everywhere else.
 
-A daemon **shall** resolve `sym` through the package's `symbols.json` and **shall** fail validation, not evaluation, on an unknown symbol or field. A resolved address outside every region in `memmap.json` is a **validation error** — this is the third seeded-defect class in charter R13.
+A daemon **shall** resolve `sym` through the package's `symbols.json` and **shall** fail validation, not evaluation, on an unknown symbol or field. A resolved address outside every region in `memmap.json` is a **validation error**; this is the third seeded-defect class in charter R13.
 
 ### 6.4 Comparison Semantics
 
@@ -274,10 +274,10 @@ The set above is not arbitrary. It is the closure of what the reference scenario
 
 | Patch style | The predicate that verifies it |
 |---|---|
-| Data patch — change a value | `mem_u32`, `mem` |
-| Configuration patch — change behavior via the config block | `mem_u32` plus a `tlm` predicate showing the behavior changed |
-| Code patch — alter a branch | `mem_changed` over the function's entry pad, plus telemetry proving the new behavior |
-| Code injection — a detour into the cave | `mem_changed` over the cave slot, plus `sustained` telemetry proving the hook runs every cycle, not once |
+| Data patch, change a value | `mem_u32`, `mem` |
+| Configuration patch, change behavior via the config block | `mem_u32` plus a `tlm` predicate showing the behavior changed |
+| Code patch, alter a branch | `mem_changed` over the function's entry pad, plus telemetry proving the new behavior |
+| Code injection, a detour into the cave | `mem_changed` over the cave slot, plus `sustained` telemetry proving the hook runs every cycle, not once |
 
 The last row is the one that justifies `sustained`. A `CALL` runs a routine once; a task hook runs it forever. Only a predicate that spans frames can tell those apart, and telling them apart is the whole difficulty ladder of the platform.
 
@@ -298,7 +298,7 @@ The named callable receives the evaluation context and returns a boolean. The ru
 1. A package containing `checks/` **shall** declare `"impure": true` in its manifest. The validator **shall** report it prominently.
 2. The daemon **shall** support a **pure mode** that refuses to load impure packages, and pure mode **shall** be the default for any packaged distribution.
 3. Scripts **shall** obey §6.6 determinism and receive no capabilities beyond the context object.
-4. The reference scenarios (§11) are pure. If an escape hatch becomes necessary to express an ordinary objective, that is evidence the vocabulary is missing an entry — **extend §6.2 rather than reaching for the hatch.**
+4. The reference scenarios (§11) are pure. If an escape hatch becomes necessary to express an ordinary objective, that is evidence the vocabulary is missing an entry: **extend §6.2 rather than reaching for the hatch.**
 
 The hatch exists so that one awkward objective in 2028 does not require a format revision. It is not an authoring convenience.
 
@@ -319,18 +319,18 @@ This is what a daemon must actually guarantee, and the part most likely to be go
 | `frame` | The decoded telemetry frame, in the shape `tlm_decode.py --json` emits. That tool is normative for the decode (firmware spec §9). |
 | `events` | Event strings computed for this frame against the previous one. |
 | `history` | Previously decoded frames, oldest first, for `sustained` / `within` / `ever`. |
-| `mem` | A read handle, `(address, length) -> bytes`, served over the **introspection channel** — never over the player's uplink. See the *Introspection API* specification. |
+| `mem` | A read handle, `(address, length) -> bytes`, served over the **introspection channel**, never over the player's uplink. See the *Introspection API* specification. |
 | `baseline` | Memory contents captured after setup and before the first player command, for `mem_changed`. |
 | `log` | The command log so far (§8). |
 | `budget` | Commands charged per resource. |
 
-**Memory snapshot semantics.** All `mem` reads within one evaluation pass **shall** observe the probe as of that frame boundary. An implementation that reads live memory mid-pass can see a value change between two predicates of the same objective, which makes conjunctions unsound. The *Introspection API* specification settles how: halt the guest for the pass, read, resume. Halting costs nothing observable — the guest clock stops with it — so this is both the correct and the cheap option.
+**Memory snapshot semantics.** All `mem` reads within one evaluation pass **shall** observe the probe as of that frame boundary. An implementation that reads live memory mid-pass can see a value change between two predicates of the same objective, which makes conjunctions unsound. The *Introspection API* specification settles how: halt the guest for the pass, read, resume. Halting costs nothing observable, the guest clock stops with it, so this is both the correct and the cheap option.
 
 **Latching.** Unless `retractable` is true, an objective that reaches `complete` stays `complete`. `failed` always latches.
 
 **Missing telemetry is false.** A predicate over an absent channel, a path that does not exist, or a frame that failed CRC is **false**. It is never an error and never aborts the pass. A scenario that wants "the sensor is gone" says so with `channel_absent`.
 
-**A failed memory read is not false — it is an error.** If introspection fails (connection lost, timeout, error reply, short read) the daemon **shall** abort the pass, leave every objective state unchanged, and surface the failure. Treating it as false would mark correct patches incomplete because the *grader* broke, and it would look exactly like the player being wrong. The *Introspection API* specification, I15, is normative here.
+**A failed memory read is not false: it is an error.** If introspection fails (connection lost, timeout, error reply, short read) the daemon **shall** abort the pass, leave every objective state unchanged, and surface the failure. Treating it as false would mark correct patches incomplete because the *grader* broke, and it would look exactly like the player being wrong. The *Introspection API* specification, I15, is normative here.
 
 ---
 
@@ -392,7 +392,7 @@ It replays the log per §9 and writes:
 }
 ```
 
-The conformance suite (§11) supplies `(package, log, expected state)` triples and diffs this output. **Nothing else about the daemon is dictated** — not its language, its HTTP surface, its storage, or its console.
+The conformance suite (§11) supplies `(package, log, expected state)` triples and diffs this output. **Nothing else about the daemon is dictated**, not its language, its HTTP surface, its storage, or its console.
 
 This is the whole acceptance gate for the format. A team that passes it has a daemon the sponsor can author against.
 
@@ -406,7 +406,7 @@ This is the whole acceptance gate for the format. A team that passes it has a da
 | `scenarios/comms-triage/` | The Galileo bandwidth scenario. Four objectives across register, data and config patches; the intended acceptance target. |
 | `firmware/tools/scenario_validate.py` | Static validator. Schema, symbol resolution, memory-map bounds, cycle detection, purity check (charter R13). |
 | `firmware/tools/scenario_eval.py` | **Reference evaluator.** Drives a real probe, applies a log, evaluates this vocabulary, emits §10 output. Implements the §10 entry point itself, so the conformance runner drives it exactly as it drives a daemon. |
-| `conformance/` | Fixtures — packages, logs, and expected state generated from real firmware runs — plus nine seeded-defect packages and `run_conformance.py`. |
+| `conformance/` | Fixtures (packages, logs, and expected state generated from real firmware runs) plus nine seeded-defect packages and `run_conformance.py`. |
 
 Both reference packages are pure content and both currently pass. Run the whole gate against the reference implementation with:
 
@@ -416,9 +416,9 @@ python3 conformance/run_conformance.py --reference
 
 which is 14 checks: 2 reference packages accepted, 9 seeded defects rejected each by its intended rule, and 3 replay fixtures agreeing objective for objective.
 
-> **The vocabulary was changed by writing these.** `mem_bits` and `tlm_bits` (§6.2) do not appear in the first draft of this document. They were added because the comms-triage objective "the deployment drive was commanded and the dish still did not recover" could not be stated without them: the only alternative was to assert the entire value of a control register, which would break whenever an unrelated bit moved. The first version of that objective *did* pass — off the wrong event, before the player had done anything — which is exactly the failure a reference scenario exists to catch. Rule 4 of §6.7 is the general form of this lesson: when the vocabulary cannot say something ordinary, extend the vocabulary.
+> **The vocabulary was changed by writing these.** `mem_bits` and `tlm_bits` (§6.2) do not appear in the first draft of this document. They were added because the comms-triage objective "the deployment drive was commanded and the dish still did not recover" could not be stated without them: the only alternative was to assert the entire value of a control register, which would break whenever an unrelated bit moved. The first version of that objective *did* pass (off the wrong event, before the player had done anything), which is exactly the failure a reference scenario exists to catch. Rule 4 of §6.7 is the general form of this lesson: when the vocabulary cannot say something ordinary, extend the vocabulary.
 
-**On the reference evaluator.** It is an *oracle*, in the same sense `tools/tlm_decode.py` is the normative telemetry decoder: it exists to prove the vocabulary is sufficient and to generate expected outputs, and where this document and the evaluator disagree, one of them is a bug. It is **not** a starting point to extend into the daemon — it has no scenario discovery, no delay simulation, no persistence, no profiles, no console, and no HTTP surface, which is to say it does not do any of the things the daemon is for.
+**On the reference evaluator.** It is an *oracle*, in the same sense `tools/tlm_decode.py` is the normative telemetry decoder: it exists to prove the vocabulary is sufficient and to generate expected outputs, and where this document and the evaluator disagree, one of them is a bug. It is **not** a starting point to extend into the daemon; it has no scenario discovery, no delay simulation, no persistence, no profiles, no console, and no HTTP surface, which is to say it does not do any of the things the daemon is for.
 
 ---
 
@@ -443,4 +443,4 @@ Warnings, which do not fail validation: unknown manifest keys; an objective with
 
 ---
 
-*Version 1.0 — the format described here is exercised by two reference packages and a reference evaluator against live firmware. Where this document and the reference material disagree, this document governs.*
+*Version 1.0: the format described here is exercised by two reference packages and a reference evaluator against live firmware. Where this document and the reference material disagree, this document governs.*

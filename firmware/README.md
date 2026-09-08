@@ -1,4 +1,4 @@
-# Sojourn — Reference Flight Firmware
+# Sojourn, Reference Flight Firmware
 
 The instructor-supplied golden image for the Sojourn reverse engineering
 game platform. Implements the Firmware Design Specification: ROM
@@ -8,7 +8,7 @@ telemetry, and the PEEK/POKE uplink command interpreter.
 
 **This tree is instructor/capstone-team material.** Players receive only
 `build/probe_app.bin` (as `probe.bin`), the published memory map, and the
-Recovered Mission Operations Manual — never this source, never
+Recovered Mission Operations Manual, never this source, never
 `symbols.json`.
 
 ## Prerequisites
@@ -65,7 +65,7 @@ trailing space* before `*`:
 
 Paste the printed lines into the `make run` console. `POKE 0x2001E000
 00000000` powers down the magnetometer: watch the MAG channel vanish from
-the next TLM frame and the load fall — that is objective 1 of the
+the next TLM frame and the load fall; that is objective 1 of the
 reference scenario, solved by hand.
 
 Watch the sensors live from a second terminal while `make gdbserver` runs:
@@ -80,10 +80,10 @@ tool is **normative**: the capstone team's game daemon must decode
 frames exactly the way it does, and any change to the telemetry format
 lands here in the same commit as the firmware change. It validates every
 frame's CRC, decodes all channels with engineering units, and reports
-frame-to-frame **events** — the signals the objective checker will
+frame-to-frame **events**, the signals the objective checker will
 ultimately be built on.
 
-**Try it with no toolchain.** `samples/capture.txt` is a real recorded session —
+**Try it with no toolchain.** `samples/capture.txt` is a real recorded session,
 the probe healthy, the high-gain dish jamming at 40%, the fall back to the omni,
 the failed redeploy, and the priority table exchanged so the radiation counter
 survives. Decoding a file needs only Python, so this works before QEMU or the
@@ -122,13 +122,13 @@ Header line, one per frame:
 | Field | Meaning |
 |---|---|
 | `[0001]` | Frame counter (16-bit, wraps). |
-| `up=` | Probe uptime in seconds — resets to ~0 after a watchdog recovery. |
+| `up=` | Probe uptime in seconds, resets to ~0 after a watchdog recovery. |
 | `NOMINAL` | Mode: `BOOT`, `NOMINAL`, or `SAFE` (SAFE frames carry no channels). |
-| `reboots=` | Lifetime reset count from NOINIT — survives recovery. |
+| `reboots=` | Lifetime reset count from NOINIT, survives recovery. |
 | `fault=` | Cause of the most recent reset: `-` none, `WDG`, `HARD`, `BADIMG`. |
-| `bus=` / `load=` | Bus voltage and total load. `load` is the honest sum of every powered device — patches show up here. |
+| `bus=` / `load=` | Bus voltage and total load. `load` is the honest sum of every powered device, patches show up here. |
 
-Sensor line — **a channel that is absent was not transmitted** (sensor
+Sensor line, **a channel that is absent was not transmitted** (sensor
 unpowered or unpolled); absence is data, and the raw wire values map to
 units as follows:
 
@@ -142,28 +142,28 @@ units as follows:
 | `STR` | quaternion-w × 10000 | value/10000 |
 | `AUX` (0x5A) | u16 | CRC-16 of the last accepted uplink command, hex |
 | `CAM` (0x43) | 6 × u16 | shown as a capture event (below), not on the sensor line |
-| `HK` (0x60) | 8 bytes | auxiliary flight functions — own `HK` line: heater, propellant, momentum, recorder fill, shed count, auth |
-| `COMMS` (0x61) | 6 bytes | downlink and antenna state — own `LINK` line: antenna, payload budget, channels dropped, dish deployment, status flags |
+| `HK` (0x60) | 8 bytes | auxiliary flight functions, own `HK` line: heater, propellant, momentum, recorder fill, shed count, auth |
+| `COMMS` (0x61) | 6 bytes | downlink and antenna state, own `LINK` line: antenna, payload budget, channels dropped, dish deployment, status flags |
 
 Event lines (`!`) are computed by comparing consecutive frames:
 
 | Event | Trigger |
 |---|---|
-| `channel X LOST` / `ACQUIRED` | A sensor channel disappeared from / returned to the downlink — the primary success signal for power-down objectives. |
+| `channel X LOST` / `ACQUIRED` | A sensor channel disappeared from / returned to the downlink, the primary success signal for power-down objectives. |
 | `PROBE REBOOTED (n -> m, fault=...)` | Reboot counter changed; fault code says why. A brick + watchdog recovery shows as `fault=WDG`. |
 | `mode A -> B` | Mode transition (e.g. entering `SAFE`). |
-| `CAM capture #id: target= exp= mean= sat= stars=` | `frame_id` advanced: a completed capture with its statistics — `sat`/`stars` are the exposure-objective signals (overexposure: `sat` up, `stars` down). |
+| `CAM capture #id: target= exp= mean= sat= stars=` | `frame_id` advanced: a completed capture with its statistics; `sat`/`stars` are the exposure-objective signals (overexposure: `sat` up, `stars` down). |
 | `ANTENNA HGA -> LGA` | The probe fell back to the low-gain antenna; the payload budget collapses and channels start dropping. |
 | `DOWNLINK SATURATED: n channels dropped` | The frame no longer fits the current antenna's budget. |
 | `HIGH GAIN ANTENNA JAMMED at n% deployment` | The dish backed out of full deployment and stalled. Re-deploying will not clear it. |
-| `HGA POINTING ERROR` / `HGA boresight reacquired` | The dish lost or regained its attitude reference — powering the star tracker off costs the downlink about six seconds later. |
+| `HGA POINTING ERROR` / `HGA boresight reacquired` | The dish lost or regained its attitude reference, powering the star tracker off costs the downlink about six seconds later. |
 | `HGA deployment n% -> m%` | The deployment drive moved. |
 | `DOWNLINK LOST (no link)` | Nothing will be transmitted: transmitter off, budget below a bare header, or the selected antenna cannot reach Earth. |
 
 ### Worked example: losing and regaining the high gain
 
 A dish that stalls at 40 % deployment, the fallback to the omni, and the
-recovery once the jam flag is patched away — every line below came from
+recovery once the jam flag is patched away, every line below came from
 the decoder against a live probe:
 
     [0002] up=    15s NOMINAL reboots=0 fault=-      bus=3.301V load=1675mW
@@ -181,7 +181,7 @@ the decoder against a live probe:
          ! ANTENNA LGA -> HGA (budget 40 -> 100 bytes)
          ! dropped channels 6 -> 0
 
-Three things are worth noticing. Only `MAG` survives the squeeze — the
+Three things are worth noticing. Only `MAG` survives the squeeze, the
 40-byte budget holds the 13-byte header, the 8-byte `COMMS` channel, the
 10-byte `HK` channel and exactly one 6-byte sensor, and `tlm_priority[]`
 decides which. The bus load falls from 1855 mW to 1675 mW on the omni,
@@ -191,7 +191,7 @@ period, so `tlm_period` is itself a way to buy bandwidth back.
 
 ### JSON mode
 
-`--json` emits one object per frame — the shape the game daemon should
+`--json` emits one object per frame, the shape the game daemon should
 produce internally. Events are included, so a first-pass objective
 checker can be a `jq` filter:
 
@@ -204,7 +204,7 @@ checker can be a `jq` filter:
 Notes: sensor channel values are the **raw wire values** (no unit
 scaling); `CAM` is a nested object (`frame_id`, `target`, `exposure_ms`,
 `hist_mean`, `sat_pct`, `stars`); unknown channels appear as
-`"0xNN": "<hex>"`. Example — watch for objective 1 completing:
+`"0xNN": "<hex>"`. Example, watch for objective 1 completing:
 
     make run-tcp &
     python3 tools/tlm_decode.py --connect 127.0.0.1:5599 --json \
@@ -217,7 +217,7 @@ scaling); `CAM` is a nested object (`frame_id`, `target`, `exposure_ms`,
     python3 tools/tlm_decode.py --connect 127.0.0.1:5599 --raw   # terminal 2
 
 To both send commands and decode, capture the single TCP session with
-your client (or `nc`) and decode the log afterwards — or run `make tlm`
+your client (or `nc`) and decode the log afterwards, or run `make tlm`
 read-only alongside a scripted uplink session against `run-tcp`
 (remember: one TCP client at a time).
 
@@ -234,7 +234,7 @@ These two belong to the *Scenario Package Format* specification rather than to
 the firmware, but they live here because they need the build's `symbols.json`
 and a probe to talk to.
 
-`scenario_validate.py` checks a package statically — schema, symbol and field
+`scenario_validate.py` checks a package statically, schema, symbol and field
 resolution, memory-map bounds, dependency cycles, purity. It never starts a
 probe, so it is fast enough for CI and for every save:
 
@@ -244,7 +244,7 @@ probe, so it is fast enough for CI and for every save:
 `scenario_eval.py` is the **reference evaluator**: it boots a real probe,
 applies a command log or a plain-text move list, evaluates the objectives
 frame by frame, and reports which completed. It exists to prove the assertion
-vocabulary is sufficient and to generate conformance fixtures — it is an
+vocabulary is sufficient and to generate conformance fixtures; it is an
 oracle, not a starting point for the game daemon.
 
     # play a scenario from a move list and record the log
@@ -264,8 +264,8 @@ oracle, not a starting point for the game daemon.
       frame   8  restore-radiation -> complete
       frame   8  keep-budget -> complete
 
-The whole acceptance gate — reference packages accepted, nine seeded defects
-rejected, three replay fixtures agreeing — runs from the repository root:
+The whole acceptance gate, reference packages accepted, nine seeded defects
+rejected, three replay fixtures agreeing: runs from the repository root:
 
     python3 conformance/run_conformance.py --reference     # 14 checks
 
@@ -296,22 +296,22 @@ scenarios reference, and it must never ship in a player image (charter R19).
 
 Each catalog target selects one of five stored 96×96 grayscale scenes: a
 survey star field, **Pluto**, **Nix** and **Arrokoth** (New Horizons), and
-a hidden fifth — all photographs being NASA public-domain imagery kept in
+a hidden fifth, all photographs being NASA public-domain imagery kept in
 `assets/`. The
 camera reads the scene, runs it through a pipeline, and writes the result
-into the frame buffer — which is what the ground downlinks. Pixels never
+into the frame buffer, which is what the ground downlinks. Pixels never
 ride in telemetry, only capture statistics.
 
 **The source images are not in the player's binary.** They live in a
 *detector image store* in ROM at `0x00024000`, outside the golden
-application image, reached via `SCENE_AT(i)`. `probe_app.bin` — the
-player's `probe.bin` — contains no pixels, only the code that reads an
+application image, reached via `SCENE_AT(i)`. `probe_app.bin`, the
+player's `probe.bin`, contains no pixels, only the code that reads an
 address. (Moving them cut it from 21,532 to 5,191 bytes.) A player can
 still recover the source, but only by finding the address and
 `PEEK`-dumping ROM, 64 commands per scene, against the uplink budget.
 
 **Easter egg.** Scene 4 is referenced by no catalog entry, so it cannot
-be commanded — but roughly 1 capture in 100 returns it anyway: a Cassini
+be commanded, but roughly 1 capture in 100 returns it anyway: a Cassini
 image of Mimas, the moon whose Herschel crater makes it look like a
 certain battle station. The roll advances from a fixed seed, not the clock, so a
 replayed command log reproduces it exactly. `g_cam_egg_pct` sets the
@@ -328,11 +328,11 @@ Every pipeline stage is a patch surface, easiest first:
 | The loop | `image_process()` | entry pad + patch point |
 
 The LUT stage is live but invisible as built, so **inverting the
-downlinked image is a pure data patch** — 8 uplinks rewriting 256 bytes.
+downlinked image is a pure data patch**, 8 uplinks rewriting 256 bytes.
 It is verifiable from telemetry alone (dark sky becomes bright, so
 `HIST_MEAN` jumps) as well as visually.
 
-Recover an actual picture — this drives the real downlink, 64 bytes per
+Recover an actual picture; this drives the real downlink, 64 bytes per
 `PEEK`, and writes a PNG with a stdlib-only encoder (no PIL):
 
     python3 tools/img_recover.py -o frame.png          # as built
@@ -348,17 +348,17 @@ hand. Regenerate the scenes with `python3 tools/gen_scenes.py`.
 ## Patching space (trampolines)
 
 The firmware pre-plants space so a patch that doesn't fit in place can
-detour out and come back — the situation real missions hit, without the
+detour out and come back, the situation real missions hit, without the
 hazard of relocating PC-relative instructions:
 
-- **Entry pad** — every scheduled task begins with 8 bytes of NOPs
+- **Entry pad**: every scheduled task begins with 8 bytes of NOPs
   (`PATCH_ENTRY`, i.e. `-fpatchable-function-entry`), ahead of its
   compiler prologue. Overwrite them with a jump; resume at `<func>+8`
   and the original body runs untouched.
-- **Inline patch points** — 8-byte NOP sleds sit immediately before key
+- **Inline patch points**: 8-byte NOP sleds sit immediately before key
   decisions (thermostat, power budget, desaturation, recorder balance,
   safe-mode trip) via `PATCH_POINT()`.
-- **Code cave** — 4 KiB of free RAM at `0x2001D000`, 32 × 128 B slots,
+- **Code cave**: 4 KiB of free RAM at `0x2001D000`, 32 × 128 B slots,
   where the injected instructions live.
 
 The 8-byte absolute jump needs no offset math (Thumb bit set in the
@@ -377,6 +377,6 @@ returns into the original function (momentum keeps advancing). See spec
 - The watchdog and vector table live in ROM; `VTOR` never points into RAM.
 - Every reset re-copies the golden image; recovery is the only boot path.
 - `POKE` protection comes from the ROM protection table, not app data.
-- A sensor's telemetry channel requires power **and** polling — two
+- A sensor's telemetry channel requires power **and** polling, two
   independently patchable surfaces per objective.
 - The app image carries no initialized `.data` (enforced by app.ld).

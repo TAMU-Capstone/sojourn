@@ -18,10 +18,10 @@ You need a built firmware tree and about an hour. Everything below is done with 
 ```
 cd firmware
 make            # builds, and writes build/symbols.json + build/memmap.json
-make test       # 99 checks — confirm the probe is healthy before blaming a scenario
+make test       # 99 checks, confirm the probe is healthy before blaming a scenario
 ```
 
-`build/symbols.json` is the file that makes authoring tractable. It maps every interesting name to an address, and it carries the **field offsets of the mission config block read out of the target's own debug information** — so you never compute an offset by hand.
+`build/symbols.json` is the file that makes authoring tractable. It maps every interesting name to an address, and it carries the **field offsets of the mission config block read out of the target's own debug information**, so you never compute an offset by hand.
 
 This guide builds one complete scenario from nothing. It is a real scenario: it ships as `scenarios/heater-runaway/`, and every command shown here was run.
 
@@ -29,13 +29,13 @@ This guide builds one complete scenario from nothing. It is a real scenario: it 
 
 ## The Scenario We Are Going to Write
 
-**Cold Start.** The survival heater will not switch off. It draws 300 mW continuously, which pushes the bus over its power budget, so the autonomous power manager begins shedding instruments to compensate — and the player watches science channels vanish from the downlink for no commanded reason.
+**Cold Start.** The survival heater will not switch off. It draws 300 mW continuously, which pushes the bus over its power budget, so the autonomous power manager begins shedding instruments to compensate, and the player watches science channels vanish from the downlink for no commanded reason.
 
-It is a good first scenario for three reasons. The cause and the symptom are two subsystems apart, so diagnosis is real work. The fix is two writes, so it is short. And there is an obvious wrong answer — restore the instrument without fixing the heater, and it gets shed again — which gives you something to write a diagnostic hint about.
+It is a good first scenario for three reasons. The cause and the symptom are two subsystems apart, so diagnosis is real work. The fix is two writes, so it is short. And there is an obvious wrong answer (restore the instrument without fixing the heater, and it gets shed again), which gives you something to write a diagnostic hint about.
 
 ---
 
-## Step 1 — Copy a Skeleton (5 minutes)
+## Step 1, Copy a Skeleton (5 minutes)
 
 ```
 cp -R scenarios/first-contact scenarios/heater-runaway
@@ -51,11 +51,11 @@ You now have `manifest.json`, `briefing.md`, `objectives.json`, and a `firmware/
 cp ../../firmware/build/{probe_rom.elf,symbols.json,memmap.json} firmware/
 ```
 
-and take the CRC from the build output — `make` prints `crc32=0xf72478e0`. A package is bound to exactly one firmware build; the daemon refuses a mismatch up front rather than failing an assertion an hour into play.
+and take the CRC from the build output, `make` prints `crc32=0xf72478e0`. A package is bound to exactly one firmware build; the daemon refuses a mismatch up front rather than failing an assertion an hour into play.
 
 ---
 
-## Step 2 — The Manifest (10 minutes)
+## Step 2, The Manifest (10 minutes)
 
 ```json
 {
@@ -90,17 +90,17 @@ Three decisions here actually matter.
 
 **`id`** is what save state is keyed on. Change it later and every player's progress on the old id is orphaned. Pick it once.
 
-**Delay.** Zero for a tutorial. For anything that should feel like deep space, 8 seconds each way — long enough that a player stops typing speculatively and starts planning, short enough not to be tedious. `comms-triage` uses 8.
+**Delay.** Zero for a tutorial. For anything that should feel like deep space, 8 seconds each way: long enough that a player stops typing speculatively and starts planning, short enough not to be tedious. `comms-triage` uses 8.
 
 **Budget.** Writes are the scarce resource; reads should be generous, because you never want to punish looking. Twenty writes is tight for a two-write fix and leaves room to flail. Note that recovering a camera image costs 144 reads, so 400 is deliberately comfortable.
 
 ---
 
-## Step 3 — Decide the Situation (15 minutes)
+## Step 3, Decide the Situation (15 minutes)
 
 `setup.json` is what makes a scenario a scenario rather than a healthy probe. It runs before the player's first frame and is not charged or logged.
 
-The firmware ships benign on purpose — every flight function's defaults keep the probe healthy — so a scenario is usually **two or three numbers moved**.
+The firmware ships benign on purpose, every flight function's defaults keep the probe healthy, so a scenario is usually **two or three numbers moved**.
 
 ```json
 {
@@ -121,19 +121,19 @@ The firmware ships benign on purpose — every flight function's defaults keep t
 }
 ```
 
-Note `{"sym": "g_config", "field": "heater_setpoint_dc"}` — a name, not arithmetic. The config block mixes 8-, 16- and 32-bit members with compiler padding, and hand-counting through it is the single most common way to author a scenario that validates and then asserts against the wrong four bytes.
+Note `{"sym": "g_config", "field": "heater_setpoint_dc"}`; a name, not arithmetic. The config block mixes 8-, 16- and 32-bit members with compiler padding, and hand-counting through it is the single most common way to author a scenario that validates and then asserts against the wrong four bytes.
 
 **Write the `note`.** It is ignored by everything. It is also the only thing that will explain this scenario to you in eighteen months.
 
-**Do the arithmetic before you write the numbers.** The instrument draws are in `firmware/app/sensors.c`: MAG 180, IMU 90, THM 40, PWR 25, RAD 70, STR 310, CAM 60 — 775 mW, plus 1080 for the transmitter and dish steering, so 1855 nominal. The heater adds 300 → 2155. A budget of 2050 means the power manager sheds down its priority order (`shed_order` in `flight.c`: camera, radiation, star tracker, IMU, magnetometer) until it is under: camera (−60) → 2095, still over; radiation (−70) → 2025, under. Two sheds, and it stops.
+**Do the arithmetic before you write the numbers.** The instrument draws are in `firmware/app/sensors.c`: MAG 180, IMU 90, THM 40, PWR 25, RAD 70, STR 310, CAM 60; 775 mW, plus 1080 for the transmitter and dish steering, so 1855 nominal. The heater adds 300 → 2155. A budget of 2050 means the power manager sheds down its priority order (`shed_order` in `flight.c`: camera, radiation, star tracker, IMU, magnetometer) until it is under: camera (−60) → 2095, still over; radiation (−70) → 2025, under. Two sheds, and it stops.
 
-That last part was chosen carefully. A budget of 2000 would also shed the **star tracker** — which is the high-gain antenna's attitude reference, so the dish would drift off boresight, the probe would fall back to the low-gain antenna, and the telemetry frame would start dropping channels for an entirely different reason. Correct behavior, and a completely confusing tutorial. **Check what your setup cascades into.**
+That last part was chosen carefully. A budget of 2000 would also shed the **star tracker**, which is the high-gain antenna's attitude reference, so the dish would drift off boresight, the probe would fall back to the low-gain antenna, and the telemetry frame would start dropping channels for an entirely different reason. Correct behavior, and a completely confusing tutorial. **Check what your setup cascades into.**
 
 `settle_frames: 2` lets the shedding happen before evaluation starts, so the player joins a situation already in progress.
 
 ---
 
-## Step 4 — Write the Briefing (20 minutes)
+## Step 4, Write the Briefing (20 minutes)
 
 `briefing.md` is shipped verbatim and is the only thing the player reads before starting. It is fiction, and it does real work: it tells them what is wrong without telling them where to look.
 
@@ -142,8 +142,8 @@ The one that ships opens:
 > Sojourn is losing instruments, one at a time, and nobody commanded it to.
 >
 > The camera went first. Two frames later the radiation counter stopped
-> reporting. Both are simply absent from the downlink now — not reading zero,
-> absent — and the probe has raised no fault. Whatever is doing this believes
+> reporting. Both are simply absent from the downlink now, not reading zero,
+> absent, and the probe has raised no fault. Whatever is doing this believes
 > it is behaving correctly.
 
 Four things that make a briefing work:
@@ -152,15 +152,15 @@ Four things that make a briefing work:
 
 **Name the symptom precisely.** *Absent, not zero* is a real distinction in this firmware and a player who misses it will chase the wrong thing. Teach it in prose once.
 
-**Say what is not broken.** "It is not malfunctioning. It is doing exactly what it was told, in a situation nobody anticipated" — this is both true of the power manager and the most useful sentence in the briefing.
+**Say what is not broken.** "It is not malfunctioning. It is doing exactly what it was told, in a situation nobody anticipated"; this is both true of the power manager and the most useful sentence in the briefing.
 
 **Flag the ordering trap if there is one.** "Put them back in the wrong order and you will simply watch it be shed again." You are allowed to warn them; they still have to do it.
 
-What not to do: no addresses, no register names, no offsets. Everything withheld is discoverable in the binary — that is the game.
+What not to do: no addresses, no register names, no offsets. Everything withheld is discoverable in the binary; that is the game.
 
 ---
 
-## Step 5 — Find Your Addresses (10 minutes)
+## Step 5, Find Your Addresses (10 minutes)
 
 Open `firmware/symbols.json`. For anything in the config block, use `field`. For everything else:
 
@@ -168,7 +168,7 @@ Open `firmware/symbols.json`. For anything in the config block, use `field`. For
 python3 -c "import json; s=json.load(open('firmware/symbols.json'))['symbols']; print(s['tlm_priority'])"
 ```
 
-Peripheral registers have no symbols — they are at fixed addresses by specification. The sensor block is eight 16-byte slots at `0x2001E000` in slot order (MAG, IMU, THM, PWR, RAD, STR, CAM, spare), so the radiation counter's control register is `0x2001E000 + 4*16 = 0x2001E040`. Camera registers start at `0x2001E100`, comms at `0x2001E200`; the firmware specification §4 has the map.
+Peripheral registers have no symbols; they are at fixed addresses by specification. The sensor block is eight 16-byte slots at `0x2001E000` in slot order (MAG, IMU, THM, PWR, RAD, STR, CAM, spare), so the radiation counter's control register is `0x2001E000 + 4*16 = 0x2001E040`. Camera registers start at `0x2001E100`, comms at `0x2001E200`; the firmware specification §4 has the map.
 
 To see the probe's live state while you work, run the telemetry decoder against a bare probe:
 
@@ -180,7 +180,7 @@ which prints decoded frames, housekeeping and link lines, and event notices as t
 
 ---
 
-## Step 6 — Write the Objective (30 minutes)
+## Step 6, Write the Objective (30 minutes)
 
 ```json
 {
@@ -203,9 +203,9 @@ which prints decoded frames, housekeeping and link lines, and event notices as t
 
 ### Assert the effect, not the method
 
-The single most important habit. The success condition above says *the heater is off and the counter is reporting* — it does not say *the setpoint equals 100*. That matters because there is more than one honest fix: correct the setpoint, disable the thermostat, patch the comparison in `task_heater`, or raise the power budget so nothing is shed. Charter R9.2 asks for at least two distinct strategies per objective. Asserting on the effect gets that for free; asserting on a specific byte forbids every solution but yours.
+The single most important habit. The success condition above says *the heater is off and the counter is reporting*; it does not say *the setpoint equals 100*. That matters because there is more than one honest fix: correct the setpoint, disable the thermostat, patch the comparison in `task_heater`, or raise the power budget so nothing is shed. Charter R9.2 asks for at least two distinct strategies per objective. Asserting on the effect gets that for free; asserting on a specific byte forbids every solution but yours.
 
-Use `mem_*` predicates when the *state of memory is the goal* — a patched priority table, an injected routine in the code cave — not as a lazy proxy for behavior you could observe in telemetry.
+Use `mem_*` predicates when the *state of memory is the goal* (a patched priority table, an injected routine in the code cave), not as a lazy proxy for behavior you could observe in telemetry.
 
 ### Predicate cookbook
 
@@ -213,7 +213,7 @@ Use `mem_*` predicates when the *state of memory is the goal* — a patched prio
 |---|---|
 | A telemetry field has a value | `{"op":"tlm","path":"channels.HK.heater_on","cmp":"eq","value":0}` |
 | A flag inside a status word | `{"op":"tlm_bits","path":"channels.COMMS.xstat","mask":4,"cmp":"eq","value":4}` |
-| An instrument is reporting / has gone | `channel_present` / `channel_absent` — never "reads zero" |
+| An instrument is reporting / has gone | `channel_present` / `channel_absent`, never "reads zero" |
 | Something happened this frame | `{"op":"event","match":"ANTENNA HGA -> LGA"}` |
 | A byte or word in memory | `mem_u8` / `mem_u16` / `mem_u32` |
 | A bit in a control register | `{"op":"mem_bits","at":{...},"mask":8,"cmp":"eq","value":8}` |
@@ -236,7 +236,7 @@ A `partial` entry fires while the objective is incomplete and shows the player *
   { "when": { "op": "all", "of": [
       { "op": "tlm", "path": "channels.HK.heater_on", "cmp": "eq", "value": 0 },
       { "op": "channel_absent", "id": "RAD" } ]},
-    "text": "The heater is off, so the load is back under budget and nothing more will be shed. But the radiation counter is still unpowered — the power manager switched it off and will not switch it back on. That is yours to undo." },
+    "text": "The heater is off, so the load is back under budget and nothing more will be shed. But the radiation counter is still unpowered, the power manager switched it off and will not switch it back on. That is yours to undo." },
 
   { "when": { "op": "all", "of": [
       { "op": "channel_present", "id": "RAD" },
@@ -260,11 +260,11 @@ Write one partial for each way you expect a competent person to be wrong. That i
 ]
 ```
 
-Frames, not minutes — five seconds each, and it keeps hints deterministic under replay. Go from *where to look* to *what kind of thing it is* to *the mechanism*, and never to the address. Three is usually right.
+Frames, not minutes: five seconds each, and it keeps hints deterministic under replay. Go from *where to look* to *what kind of thing it is* to *the mechanism*, and never to the address. Three is usually right.
 
 ---
 
-## Step 7 — Validate (1 minute)
+## Step 7, Validate (1 minute)
 
 ```
 python3 firmware/tools/scenario_validate.py scenarios/heater-runaway
@@ -274,11 +274,11 @@ python3 firmware/tools/scenario_validate.py scenarios/heater-runaway
 PASS  scenarios/heater-runaway
 ```
 
-This catches unknown predicate ops, missing keys, symbols that do not exist, type mismatches, dependency cycles, and — the one that saves you an afternoon — any address that resolves outside the memory map. Run it on every save. Add `--strict` to make warnings fail.
+This catches unknown predicate ops, missing keys, symbols that do not exist, type mismatches, dependency cycles, and, the one that saves you an afternoon, any address that resolves outside the memory map. Run it on every save. Add `--strict` to make warnings fail.
 
 ---
 
-## Step 8 — Solve It Yourself (20 minutes)
+## Step 8, Solve It Yourself (20 minutes)
 
 **Do not skip this.** A scenario nobody has solved end to end is not finished, and every mistake in this guide's "traps" section was found this way.
 
@@ -314,7 +314,7 @@ A run takes about two minutes, because the probe emits one frame every five seco
 
 ---
 
-## Step 9 — Keep the Fixture (5 minutes)
+## Step 9, Keep the Fixture (5 minutes)
 
 `--record` wrote `solution.jsonl`. Keep it with the package. It is instructor material, and it is also what stops this scenario from silently rotting: the conformance suite replays these logs, so if the firmware changes in a way that breaks a scenario, the suite fails instead of a student discovering it is unsolvable.
 
@@ -326,15 +326,15 @@ To add it to the suite, drop a `(package, fixture)` pair into `FIXTURES` in `con
 
 Every one of these was hit while writing the shipped packages.
 
-**`commanded` without `result` matches a command the probe refused.** Rejected commands are logged on purpose — they cost budget and they are evidence. An objective meaning *they did this successfully* must say `"result": "ACK"`.
+**`commanded` without `result` matches a command the probe refused.** Rejected commands are logged on purpose; they cost budget and they are evidence. An objective meaning *they did this successfully* must say `"result": "ACK"`.
 
-**An `event` predicate can match an event your own setup caused.** The first version of `comms-triage`'s redeploy objective completed off the antenna's *failure* event, before the player had done anything. If an objective is meant to record a player action, assert on the action — the command log, or a control-register bit — and use telemetry for the consequence.
+**An `event` predicate can match an event your own setup caused.** The first version of `comms-triage`'s redeploy objective completed off the antenna's *failure* event, before the player had done anything. If an objective is meant to record a player action, assert on the action (the command log, or a control-register bit), and use telemetry for the consequence.
 
 **Hand-computed offsets.** Use `field`. Always.
 
 **Asserting the method.** See Step 6. It forbids solutions you did not think of, and R9.2 explicitly wants those.
 
-**Forgetting `sustained`.** Especially where a task acts once per cycle, or where you are distinguishing a routine that ran once from a hook that runs every cycle — which is the difference between the two hardest patch styles in the platform.
+**Forgetting `sustained`.** Especially where a task acts once per cycle, or where you are distinguishing a routine that ran once from a hook that runs every cycle, which is the difference between the two hardest patch styles in the platform.
 
 **Cascading setup.** Check what your initial conditions knock over two subsystems away. Read `flight.c` and `comms.c` before trimming a budget.
 
@@ -347,10 +347,10 @@ Every one of these was hit while writing the shipped packages.
 - [ ] `id` is final; `revision` bumped if the package has ever been played
 - [ ] `firmware/` refreshed from the current build; `app_crc32` matches
 - [ ] Every setup write has a `note` explaining why
-- [ ] Setup cascades checked — nothing unintended is being shed, drifted or dropped
+- [ ] Setup cascades checked, nothing unintended is being shed, drifted or dropped
 - [ ] Briefing names the symptom, withholds the answer, contains no addresses
 - [ ] Success asserts effects, not a particular byte
-- [ ] At least two honest solutions exist (R9.2) — write them down
+- [ ] At least two honest solutions exist (R9.2), write them down
 - [ ] A partial state for each expected way to be wrong
 - [ ] Hints go from where-to-look to mechanism, never to an address
 - [ ] `scenario_validate.py` passes, `--strict` reviewed
@@ -368,4 +368,4 @@ Subsystems available and largely untouched by the shipped packages: the attitude
 
 ---
 
-*Version 1.0 — every command in this guide was run against the reference build (`crc32 0xf72478e0`). The scenario it builds ships as `scenarios/heater-runaway/`.*
+*Version 1.0: every command in this guide was run against the reference build (`crc32 0xf72478e0`). The scenario it builds ships as `scenarios/heater-runaway/`.*
