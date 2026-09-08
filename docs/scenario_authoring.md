@@ -31,7 +31,7 @@ This guide builds one complete scenario from nothing. It is a real scenario: it 
 
 **Cold Start.** The survival heater will not switch off. It draws 300 mW continuously, which pushes the bus over its power budget, so the autonomous power manager begins shedding instruments to compensate, and the player watches science channels vanish from the downlink for no commanded reason.
 
-It is a good first scenario for three reasons. The cause and the symptom are two subsystems apart, so diagnosis is real work. The fix is two writes, so it is short. And there is an obvious wrong answer (restore the instrument without fixing the heater, and it gets shed again), which gives you something to write a diagnostic hint about.
+It is a good first scenario for three reasons. The cause and the symptom are two subsystems apart, so diagnosis is more difficult. The fix is two writes, so it is short. And there is an obvious wrong answer (restore the instrument without fixing the heater, and it gets shed again), which gives you something to write a diagnostic hint about.
 
 ---
 
@@ -135,7 +135,7 @@ That last part was chosen carefully. A budget of 2000 would also shed the **star
 
 ## Step 4, Write the Briefing (20 minutes)
 
-`briefing.md` is shipped verbatim and is the only thing the player reads before starting. It is fiction, and it does real work: it tells them what is wrong without telling them where to look.
+`briefing.md` is shipped verbatim and is the only thing the player reads before starting. 
 
 The one that ships opens:
 
