@@ -49,8 +49,8 @@
 | **R3.3** | T | An objective that reaches complete SHALL remain complete for the rest of the scenario run, and the completion SHALL be persisted to the save volume within 5 s. | T | - |
 | **R3.4** | T | The console SHALL reveal each authored hint once its objective has been `active` for the authored frame count, SHALL reveal hints cumulatively, and SHALL reveal no hint or brief for a `locked` objective. | D | - |
 | **R4.1** | T | The daemon SHALL delay each uplink by the scenario-configured one-way transmission delay, configurable from 0 to 3600 s in 1 s increments. | T | - |
-| **R4.2** | T | The daemon SHALL meter **only state-changing uplinks** (`POKE`, `CALL`, `TRIM`, `SAFE`) against the scenario-configured command budget (1–1000 commands per window; window length 10–86 400 s), and SHALL reject each over-budget command with a distinct console error without forwarding it to the probe. | T | Firmware Design Specification, Scenario Package Format, Introspection API |
-| **R4.3** | T | Read-only uplinks (`PING`, `STAT`, `PEEK`, `DUMP`, `AUTH`) SHALL NOT consume the command budget. Where a scenario limits observation it SHALL do so through a separate read allowance, configurable 1–10 000 commands per window. | T | Firmware Design Specification, Scenario Package Format, Introspection API |
+| **R4.2** | T | The daemon SHALL meter **only state-changing uplinks** (`POKE`, `CALL`, `TRIM`, `SAFE`) against the scenario-configured command budget (1–1000 commands per window; window length 10–86 400 s), and SHALL reject each over-budget command with a distinct console error without forwarding it to the probe. | T | Scenario Package Format, Introspection API |
+| **R4.3** | T | Read-only uplinks (`PING`, `STAT`, `PEEK`, `DUMP`, `AUTH`) SHALL NOT consume the command budget. Where a scenario limits observation it SHALL do so through a separate read allowance, configurable 1–10 000 commands per window. | T | Scenario Package Format, Introspection API |
 | **R5.1** | T | If the application fails to reload the watchdog for 3 s (±1 tick at 100 Hz), the firmware SHALL reset and restore the golden image. | T | - |
 | **R5.2** | T | Within 10 s of a watchdog reset, downlink telemetry SHALL resume with the reboot counter incremented by exactly 1 and reported uptime under 10 s. | T | - |
 | **R5.3** | T | A POKE addressed to any protected region SHALL return `NAK E04` and SHALL leave all probe memory unmodified. | T | - |
@@ -67,7 +67,7 @@
 | **R9.1** | T | The reference scenario SHALL contain at least 4 graded objectives, including at least one each of: data patch, configuration patch, code patch, and code injection. | D | Scenario Author's Guide |
 | **R9.2** | O | Each graded objective SHALL be solvable by at least 2 distinct patch strategies, both documented instructor-side. | A | Scenario Author's Guide |
 | **R10.1** | T | Every telemetry field documented in the recovered manual SHALL be decodable by a tester using only the manual and captured downlink frames. | D | Scenario Package Format |
-| **R10.2** | T | At least 1 telemetry channel SHALL be present in downlink frames and absent from the recovered manual. | I | Firmware Design Specification, Scenario Package Format |
+| **R10.2** | T | At least 1 telemetry channel SHALL be present in downlink frames and absent from the recovered manual. | I | Scenario Package Format |
 
 ### §6.3 Extensibility
 
