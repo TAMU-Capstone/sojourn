@@ -6,9 +6,6 @@
 | **Document** | Project Charter and Requirements Specification |
 | **Version** | 0.7 (Draft — one identifier per requirement: the introspection specification's I-numbers folded into R24.1–R24.21 and a generated register added. v0.6 — §6.11 ground-station console and session lifecycle requirements added; scenario-controlled telemetry decoding. v0.5 named QEMU as the emulation target and deferred Renode; emulation risk downgraded. v0.4 captured the specifications' normative content as requirements; §6.8–§6.10 added; R2.2, R3.1, R3.2, R21, R22.1 amended) |
 | **Date** | September 3, 2026 |
-| **Sponsor** | Trevor Bakker (Instructor) |
-| **Team** | 5–6 Computer Science students, one semester |
-| **Status** | Draft for team review |
 
 ---
 
@@ -18,7 +15,7 @@ The team will build a **reverse engineering game platform** in which a player ta
 
 The player experience is a tight feedback loop: analyze the binary offline in a disassembler, compose an uplink through a ground-station console, wait out a simulated transmission delay, and read the resulting downlink telemetry to learn whether the change took effect.
 
-The capstone team does **not** primarily build a game level — it builds the **platform**: an emulated probe, a command uplink/downlink protocol, a ground-station console, a scenario engine with live objective checking, and exactly **one polished reference scenario** proving the platform works. The platform will later serve as courseware for a reverse engineering course, so **extensibility is a first-class requirement**: adding a future mission must require authoring content, not modifying code.
+The capstone team builds the **platform**: an emulated probe, a command uplink/downlink protocol, a ground-station console, a scenario engine with live objective checking, and atleast **two polished reference scenario** proving the platform works. The platform will later serve as courseware for a reverse engineering course, so **extensibility is a first-class requirement**: adding a future mission must require authoring content, not modifying code.
 
 ## 2. Objectives & Success Criteria
 
@@ -31,21 +28,15 @@ The project succeeds if, at the end of the semester:
 5. Player progress (completed objectives, command history) survives container restarts and image upgrades via a mounted volume.
 6. All five components (firmware, emulation harness, game daemon, console, scenario format) are documented well enough that a future course team can maintain them.
 
-**Explicit non-goals (out of scope for the semester):** multi-tenant hosting, accounts/authentication beyond a local player profile, anti-cheat or tamper-proofing of the container, real-time multiplayer, more than one full-length scenario, mobile clients, and instructor-side grading infrastructure (the design must not preclude it later — see §6.7 — but none is built this semester).
-
-**Threat model, stated plainly:** the player owns the container and can inspect everything in it, including the objective checker. This is accepted. A student who cheats by reverse engineering the grader has, in a meaningful sense, completed the exercise. No secrets required for grading may therefore ever ship in the image.
-
 ## 3. Background & Motivating Example
 
-In 2023–2024, NASA JPL revived Voyager 1 — 15 billion km away, 22-hour one-way light time — by diagnosing a failed memory chip in the Flight Data Subsystem from garbled telemetry alone, then relocating and patching the affected code by poking new bytes into memory, section by section, with no ability to test on the real hardware first. Sensor shutdowns to conserve Voyager 2's power budget follow the same pattern: small, surgical, irreversible-feeling memory writes, verified only through downlink telemetry.
+In 2023–2024, NASA JPL revived Voyager 1 which was 15 billion km away, 22-hour one-way light time, by diagnosing a failed memory chip in the Flight Data Subsystem from garbled telemetry alone, then relocating and patching the affected code by poking new bytes into memory, section by section, with no ability to test on the real hardware first. Sensor shutdowns to conserve Voyager 2's power budget follow the same pattern: small, surgical, irreversible-feeling memory writes, verified only through downlink telemetry.
 
 This project compresses that experience into a game: the same constraints (opaque binary, narrow uplink, telemetry-only feedback, real consequences for mistakes) at a scale a student can master in weeks rather than a career.
 
-## 4. Player Experience (Definitive Description)
+## 4. Player Experience 
 
-The following narrative is normative — the platform must support every beat of it.
-
-> The player unpacks the mission archive: a container image, `probe.bin` (the flight firmware), a memory map, and the *Recovered Mission Operations Manual* — authentic-looking but incomplete documentation of the probe's subsystems, telemetry format, and command protocol. They start the container and open the ground-station console in a browser: a terminal-style interface showing a live downlink telemetry feed and an uplink command line.
+> The player unpacks the mission archive: a container image, `probe.bin` (the flight firmware), a memory map, and the *Recovered Mission Operations Manual* an authentic-looking but incomplete documentation of the probe's subsystems, telemetry format, and command protocol. They start the container and open the ground-station console in a browser: a terminal-style interface showing a live downlink telemetry feed and an uplink command line.
 >
 > Mission control (the scenario's briefing) reports that the probe's magnetometer is failing, flooding the downlink and draining the power budget. The player's first objective: power it down. They load `probe.bin` into Ghidra alongside the memory map, find the sensor polling table, and identify the byte that enables the magnetometer channel.
 >
@@ -71,36 +62,35 @@ Emulated Probe  (ARM Cortex-M firmware on QEMU · watchdog & golden image)
 content: /scenarios/*  (drop-in packages)      mounted volume: /savedata  (saves, command log)
 ```
 
-### 5.1 Probe Firmware (content + one reference implementation)
+### 5.1 Probe Firmware 
 
-Bare-metal C for **ARM Cortex-M (Thumb-2)**. Chosen deliberately: it is what Ghidra handles cleanly, it is simple to emulate, and it is authentic to real spacecraft-class embedded software. The reference firmware implements: a cooperative main loop, a sensor subsystem table (the primary patch target), a telemetry encoder emitting periodic downlink frames, a command interpreter (PEEK/POKE/CALL/status), a watchdog, and a protected golden-image recovery path. Firmware source is a *platform deliverable* (for future scenario authors) but is **never shipped to players** — players get only the built binary, memory map, and manual.
+Bare-metal C for **ARM Cortex-M (Thumb-2)**. Chosen deliberately: it is what Ghidra handles cleanly, it is simple to emulate, and it is authentic to real spacecraft-class embedded software. The reference firmware implements: a cooperative main loop, a sensor subsystem table (the primary patch target), a telemetry encoder emitting periodic downlink frames, a command interpreter (PEEK/POKE/CALL/status), a watchdog, and a protected golden-image recovery path. Firmware source is a *platform deliverable* (for future scenario authors) but is **never shipped to players**. Players get only the built binary, memory map, and manual.
 
-### 5.2 Emulation Harness (platform)
+### 5.2 Emulation Harness
 
-Runs the firmware under **QEMU** (`-M mps2-an386`) with: a virtual UART carrying the command protocol, the GDB remote serial protocol stub the daemon reads memory through (§6.9), and watchdog/reset modeling. One probe instance per container — solo play is the design point. A "hello probe" — firmware answering a ping over the emulated UART, memory readable over introspection — is due by Week 3 (M1).
+Runs the firmware under **QEMU** (`-M mps2-an386`) with: a virtual UART carrying the command protocol, the GDB remote serial protocol stub the daemon reads memory through (§6.9), and watchdog/reset modeling. One probe instance per container — solo play is the design point. 
 
-> **QEMU is the target; Renode is not in scope.** The sponsor-furnished firmware boots, runs and passes its full end-to-end suite under stock QEMU today, so this component starts from a working baseline rather than a research problem. Renode remains the documented end state for the **harness tier** (firmware specification §6), in which the sensor register block becomes emulator-implemented peripherals and the physics leaves the binary — but that is a content-fidelity improvement, not a platform requirement, and it is explicitly out of scope this semester. Nothing is lost by deferring it: both emulators serve the same GDB remote serial protocol, and R24.8 forbids emulator-specific introspection code, so a later team can substitute Renode by configuration without touching the daemon.
 
-### 5.3 Game Daemon (platform)
+### 5.3 Game Daemon 
 
-A local service that owns everything between the emulator and the browser: loads scenario packages; relays uplink frames to the probe (enforcing the scenario's transmission delay, bandwidth budget, and checksum rules); decodes nothing about the firmware itself — all firmware-specific knowledge lives in the scenario package; continuously evaluates objective assertions against emulator state and telemetry after each downlink cycle; appends every uplink to a persistent, timestamped **command log**; and writes save state. **Progress persistence is by command-log replay:** on restart, the daemon replays the logged uplinks against a fresh probe instance rather than snapshotting emulator memory. This makes saves trivially portable across image upgrades and gives command history, save/restore, and (future) grading evidence from a single mechanism.
+A local service that owns everything between the emulator and the browser: loads scenario packages; relays uplink frames to the probe (enforcing the scenario's transmission delay, bandwidth budget, and checksum rules); decodes nothing about the firmware itself. All firmware-specific knowledge lives in the scenario package; continuously evaluates objective assertions against emulator state and telemetry after each downlink cycle; appends every uplink to a persistent, timestamped **command log**; and writes save state. **Progress persistence is by command-log replay:** on restart, the daemon replays the logged uplinks against a fresh probe instance rather than snapshotting emulator memory. This makes saves trivially portable across image upgrades and gives command history, save/restore, and (future) grading evidence from a single mechanism.
 
-### 5.4 Ground-Station Console (platform)
+### 5.4 Ground-Station Console 
 
 Browser-based (xterm.js or equivalent), served by the daemon. Panels: live downlink telemetry feed (raw frames — decoding them is part of the game); uplink command line with history; transmission-delay countdown for in-flight commands; mission status panel (objectives with pending / partial / complete states and unlock-on-completion briefing text); and an event ticker (ACK/NAK, watchdog resets). Presentation should be diegetic — a mission-control console, not a quiz app.
 
-### 5.5 Scenario Package Format (platform's most important deliverable)
+### 5.5 Scenario Package Format 
 
 A scenario is **pure content**: a directory (or archive) containing
 
 - `manifest` — metadata, ordering/dependencies of objectives, delay/bandwidth parameters;
 - `firmware.bin` + memory map — the probe image and its layout;
 - `docs/` — the player-facing recovered manual (shipped verbatim);
-- `objectives/` — one declarative entry per objective: briefing text, and **win conditions as machine-checkable assertions** over (a) memory state read via introspection and (b) telemetry field predicates, with optional **partial-progress states** carrying diagnostic hint text (e.g., "sensor silenced but power draw unchanged — did you stub the readout instead of cutting power?").
+- `objectives/` — one declarative entry per objective: briefing text, and **win conditions as machine-checkable assertions** over (a) memory state read via introspection and (b) telemetry field predicates, with optional **partial-progress states** carrying diagnostic hint text (e.g., "Sensor silenced but power draw unchanged. Did you stub the readout instead of cutting power?").
 
 The assertion language is the platform's core abstraction. It must be expressive enough for the reference scenario's hardest objective (code injection) and simple enough that an instructor can author it from documentation alone. The acceptance test is objective #4 in §2: **a new scenario is added with zero platform-code changes.**
 
-> **This format is specified, not delegated.** See the *Scenario Package Format* specification (`docs/scenario_format.md`), normative for the package layout, the manifest, the assertion vocabulary, the evaluation contract, the command-log format, and one thin daemon entry point used only for testing — and deliberately silent about daemon architecture, language, storage and the console, which remain the team's design. It ships with two reference packages, a reference evaluator, a validator satisfying R13, and a conformance suite that serves as the daemon's acceptance gate. The reasoning: the team builds one daemon once, while the sponsor authors scenarios against this format for years afterward. The format is the long-lived artifact, so it is owned by the sponsor and fixed up front; the daemon is not, so it is left open.
+> **This format is specified, not delegated.** See the *Scenario Package Format* specification (`docs/scenario_format.md`), normative for the package layout, the manifest, the assertion vocabulary, the evaluation contract, the command-log format, and one thin daemon entry point used only for testing. It is deliberately silent about daemon architecture, language, storage and the console, which remain the team's design. It ships with two reference packages, a reference evaluator, a validator satisfying R13, and a conformance suite that serves as the daemon's acceptance gate. 
 
 ## 6. Requirements
 
@@ -130,7 +120,6 @@ The assertion language is the platform's core abstraction. It must be expressive
 | R6.2 | O | The console SHALL transmit a player-supplied batch file of up to 100 commands in file order, subject to the same delay and budget enforcement as typed commands. | D |
 | R7 | S | A player-triggered scenario reset, if provided, SHALL preserve the command log and no other player state. | D |
 
-> **Why reads and writes are metered separately.** A budget tight enough to make each patch feel consequential (tens of commands) cannot also accommodate recovering an image, which costs 144 `PEEK`s at 96×96 — or 18 with bulk downlink enabled. The budget exists to make *decisions* costly, not to punish observation, and real missions meter command uplink and downlink bandwidth as different resources. Metering only writes lets a scenario run a genuinely tight patch budget and a full image downlink at the same time without either distorting the other.
 
 ### 6.2 Reverse Engineering Surface
 
@@ -190,8 +179,6 @@ The assertion language is the platform's core abstraction. It must be expressive
 
 ### 6.8 Scenario Package & Content Seam
 
-Requirements in this section make the *Scenario Package Format* specification binding. That document defines the schemas and vocabulary; these are the verifiable obligations it places on the platform.
-
 | ID | Pri | Requirement | Verify |
 |---|---|---|---|
 | R23.1 | T | The daemon SHALL load only packages conforming to the Scenario Package Format at the format revision it implements, and SHALL refuse any package declaring a higher `format` value, reporting the package path and the unsupported value. | T |
@@ -206,8 +193,6 @@ Requirements in this section make the *Scenario Package Format* specification bi
 | R23.10 | T | A predicate over absent telemetry — an absent channel, an undefined field path, or a frame failing CRC — SHALL evaluate false and SHALL NOT abort the evaluation pass. | T |
 
 ### 6.9 Evaluation Integrity & Introspection
-
-Requirements in this section make the *Introspection API* specification binding. They exist because the alternative design — evaluating objectives over the player's uplink — is plausible, simpler, and wrong in three ways that produce no visible symptom.
 
 | ID | Pri | Requirement | Verify |
 |---|---|---|---|
@@ -259,8 +244,6 @@ Automated verification is concentrated in three suites, and a requirement marked
 
 Requirements verified by inspection, analysis or demonstration are settled at the design review (§10) rather than in CI, and are listed in the acceptance script.
 
-> **Requirements that changed at v0.4, and why.** R2.2 omitted the command log, which the assertion vocabulary reads through its `commanded` and `budget` predicates. R3.1 named three objective states where the format defines four, and treated "partial" as a state when it is diagnostic text attached to an active objective. R3.2 conflated that diagnostic text with the timed hint ladder, which are separately authored and separately revealed; R3.4 now covers hints. R21 listed four deliverable documents before four specifications existed. R22.1 required a UTC timestamp in each command-log entry — but replay schedules commands by **probe uptime**, and a wall-clock stamp used for that purpose reproduces a different session on a faster machine, which is precisely the defect the requirement was meant to prevent.
-
 
 ### 6.11 Ground-Station Console
 
@@ -299,50 +282,8 @@ The console is the whole of the player's contact with the mission. §6.1 already
 | R26.6 | T | Exit SHALL terminate the probe process, flush the command log, and leave no orphaned emulator process, verified by process inspection after exit. | T |
 | R26.7 | T | No menu action SHALL be able to alter objective state other than by replaying a command log. | I |
 
-> **Why the read-out is scenario-controlled (R25.3).** Decoding the downlink is a core activity, not a chore to automate away: R10.1 requires every documented channel to be decodable from the manual and captured frames alone, and R10.2 requires at least one channel the manual never mentions. A console that decodes everything answers both for the player. The rule adopted is that the console may decode exactly what the mission's documentation already explains — a real ground station has decoders for its documented formats and none for a channel nobody has written down. Tutorial packages opt in generously; a scenario about discovering the telemetry format opts in to nothing. The default is nothing.
 
-
-## 7. Team Organization
-
-Roles for 5–6 students; each owns a component and its documentation and tests. Integration is everyone's job, but the Protocol & Integration owner is accountable for it.
-
-| Role | Owns | Key deliverables |
-|---|---|---|
-| **Firmware / Scenario Engineer** | §5.1 | Reference firmware, memory map, golden image, difficulty-ramp objectives, recovered manual (with instructor) |
-| **Emulation Engineer** | §5.2 | QEMU harness, introspection client (§6.9), watchdog/reset modeling, M1 "hello probe" |
-| **Platform Engineer(s)** (1–2) | §5.3, §5.5 | Game daemon, scenario loader, assertion evaluator, delay/budget enforcement, persistence & replay |
-| **Frontend Engineer** | §5.4 | Ground-station console, telemetry feed, mission status panel, diegetic presentation |
-| **Protocol & Integration Engineer** | seams | Uplink/downlink protocol spec, scenario package schema + validation tool (R13), CI, end-to-end test (R20), release engineering |
-
-With five students, the Protocol & Integration role merges into the Platform role. The instructor acts as product owner and co-authors all player-facing fiction and documentation.
-
-## 8. Milestones (15-week semester)
-
-| Milestone | Week | Exit criteria |
-|---|---|---|
-| **M0 — Design freeze** | 2 | Protocol spec, scenario package schema, and introspection API drafted and reviewed; repos and CI up |
-| **M1 — Hello probe** | 3 | Firmware answers ping over emulated UART; daemon reads probe memory via introspection. *Schedule-risk gate: if M1 slips past week 4, cut scope (see §9) rather than compress later milestones* |
-| **M2 — Vertical slice** | 6 | One hard-coded objective playable end to end in the browser: uplink → delay → ACK → telemetry change → objective completes |
-| **M3 — Platform feature-complete** | 9 | Scenario packages load from content dir; assertions drive objectives incl. partial states; persistence/replay works; watchdog/golden image works |
-| **M4 — Reference scenario complete** | 12 | Full difficulty ramp playable; recovered manual written; end-to-end test passes; second mini-scenario added with zero code changes (proves R11) |
-| **M5 — Release** | 14–15 | Playtested with naive users; docs complete; container published; final presentation |
-
-## 9. Risks
-
-| Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|
-| Emulation harness harder than expected | Low | High | Downgraded from Med at v0.5: the firmware already boots and passes 99 end-to-end checks under stock QEMU, so M1 is an integration task rather than a bring-up. M1 gate at week 3 retained; if it slips, the fallback is to drive the probe over the UART alone and defer introspection, accepting telemetry-only objectives until it lands |
-| Assertion language over-engineered | Med | Med | Design it from the reference scenario's real objectives, not speculatively; R12's worked example is the scope fence |
-| Reference scenario content squeezed by platform work | High | Med | Instructor co-authors fiction/docs in parallel from week 1; objectives 1–2 authored against the M2 vertical slice |
-| Team integration late-semester crunch | Med | High | Vertical slice at M2 forces early integration; end-to-end test in CI from M3 |
-| Scope creep (multiplayer, accounts, anti-cheat) | Med | Med | Non-goals in §2 are contractual; changes require sponsor sign-off |
-
-**Pre-agreed scope cuts, in order:** (1) drop R13 validation tool, (2) drop scoring beyond completion tracking (R16), (3) reduce ramp to three objectives (defer code injection to a documented stretch scenario), (4) simplify console to a single-pane terminal. The scenario-package seam (R11) and the feedback loop (R1–R5) are never cut — they are the project.
-
-## 10. Acceptance & Handoff
 
 Final acceptance is a live demonstration by the instructor, unassisted, of: pulling the image, playing the reference scenario's first two objectives, deliberately bricking the probe and recovering, restarting the container and confirming restored progress, and installing the second mini-scenario by copying a directory. Handoff includes all repositories, the container build pipeline, and the documentation set (R21) under a license permitting course use and future student maintenance.
 
 ---
-
-*Prepared for the capstone team by the project sponsor. The mission — and the probe — is named **Sojourn**: a long stay, far from home.*
