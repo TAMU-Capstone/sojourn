@@ -30,12 +30,20 @@ SPECS := charter firmware_spec introspection_api platform_design \
 DOCXS := $(addsuffix .docx,$(SPECS))
 
 # A headless browser, if one is installed. Used only for the manual PDF.
-BROWSER := $(firstword $(wildcard \
-  /Applications/Chromium.app/Contents/MacOS/Chromium \
-  /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-  /Applications/Microsoft\ Edge.app/Contents/MacOS/Microsoft\ Edge \
-  /opt/pw-browsers/chromium) \
-  $(shell command -v chromium chromium-browser google-chrome 2>/dev/null))
+# Found with a shell loop rather than $(wildcard) + $(firstword). The Chrome
+# and Edge paths contain a space, and make's word functions split on
+# whitespace, so firstword silently truncated the browser to
+# "/Applications/Google" and every PDF build failed with "No such file".
+BROWSER := $(shell for b in \
+    /Applications/Chromium.app/Contents/MacOS/Chromium \
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+    /opt/pw-browsers/chromium \
+    "`command -v chromium 2>/dev/null`" \
+    "`command -v chromium-browser 2>/dev/null`" \
+    "`command -v google-chrome 2>/dev/null`" ; do \
+      [ -n "$$b" ] && [ -x "$$b" ] && printf '%s' "$$b" && break ; \
+    done)
 
 .PHONY: all docx register manual deck check deps clean
 all: register docx manual
@@ -60,18 +68,11 @@ register:
 	@$(PYTHON) $(TOOLS)/requirements.py --write
 
 # ---- the player-facing manual -------------------------------------------
-# Chromium prints dbus warnings and can exit non-zero even on success, so
-# judge it by whether the PDF actually appeared rather than by its status.
+# The PDF step lives in build_pdf.sh because it needs a hard timeout, a
+# private browser profile and a build-then-move: too much for a recipe line.
+# A missing PDF is a skip, never a build failure. The HTML is the deliverable.
 manual: manual.html
-	@if [ -z "$(BROWSER)" ]; then \
-	  echo "SKIP manual.pdf — no chromium/chrome found; manual.html is built"; \
-	else \
-	  rm -f $(DOCS)manual.pdf; \
-	  "$(BROWSER)" --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
-	    --print-to-pdf=$(DOCS)manual.pdf $(DOCS)manual.html >/dev/null 2>&1 || true; \
-	  if [ -s $(DOCS)manual.pdf ]; then echo "wrote manual.pdf"; \
-	  else echo "FAILED to write manual.pdf; manual.html is built"; exit 1; fi; \
-	fi
+	@sh $(DOCS)build_pdf.sh $(DOCS)manual.html $(DOCS)manual.pdf
 
 manual.html: manual.md build_manual.py
 	@$(PYTHON) build_manual.py $< $@
