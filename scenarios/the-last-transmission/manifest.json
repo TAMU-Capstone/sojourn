@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "id": "sojourn.recovery.last-transmission",
+  "title": "The Last Transmission",
+  "revision": 1,
+  "author": "ISA Flight Operations",
+  "summary": "Recover radiation science and improve low-gain communications capacity.",
+  "difficulty": "intermediate",
+  "firmware": {
+    "rom": "firmware/probe_rom.elf",
+    "symbols": "firmware/symbols.json",
+    "memmap": "firmware/memmap.json",
+    "app_crc32": "0xf72478e0"
+  },
+  "link": {
+    "uplink_delay_s": 8,
+    "downlink_delay_s": 8,
+    "require_checksum": true,
+    "budget": {
+      "writes": 60,
+      "reads": 2000
+    }
+  },
+  "console": {
+    "decode": [
+      "MAG",
+      "IMU",
+      "THM",
+      "PWR",
+      "RAD",
+      "STR",
+      "CAM",
+      "HK",
+      "COMMS"
+    ],
+    "dsn_complex": "auto"
+  },
+  "briefing": "briefing.md",
+  "setup": "setup.json",
+  "objectives": "objectives.json",
+  "docs": [
+    "docs/recovered_manual.md"
+  ]
+}

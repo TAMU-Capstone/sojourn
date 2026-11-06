@@ -1,0 +1,98 @@
+{
+  "format": 1,
+  "objectives": [
+    {
+      "id": "data-priority",
+      "title": "Preserve radiation science",
+      "brief": "With the dish jammed, recover the radiation counter under low-gain bandwidth constraints by modifying the channel selection data.",
+      "points": 25,
+      "success": {
+        "op": "sustained",
+        "frames": 3,
+        "of": {
+          "op": "all",
+          "of": [
+            {
+              "op": "mem_changed",
+              "at": {
+                "sym": "tlm_priority"
+              },
+              "len": 10
+            },
+            {
+              "op": "tlm",
+              "path": "channels.COMMS.antenna",
+              "cmp": "eq",
+              "value": "LGA"
+            },
+            {
+              "op": "channel_present",
+              "id": "RAD"
+            }
+          ]
+        }
+      },
+      "hints": [
+        {
+          "after_frames": 6,
+          "text": "A channel can be healthy and still lose the downlink bandwidth contest."
+        },
+        {
+          "after_frames": 18,
+          "text": "The channel priority order is a writable byte table."
+        }
+      ]
+    },
+    {
+      "id": "config-bandwidth",
+      "title": "Recover the downlink margin",
+      "brief": "Modify the communications configuration to increase low-gain capacity without restoring the jammed high-gain antenna.",
+      "requires": [
+        "data-priority"
+      ],
+      "points": 25,
+      "success": {
+        "op": "sustained",
+        "frames": 3,
+        "of": {
+          "op": "all",
+          "of": [
+            {
+              "op": "mem_u16",
+              "at": {
+                "sym": "g_config",
+                "field": "lga_rate_bps"
+              },
+              "cmp": "gt",
+              "value": 64
+            },
+            {
+              "op": "tlm",
+              "path": "channels.COMMS.antenna",
+              "cmp": "eq",
+              "value": "LGA"
+            },
+            {
+              "op": "channel_present",
+              "id": "RAD"
+            },
+            {
+              "op": "channel_present",
+              "id": "IMU"
+            }
+          ]
+        }
+      },
+      "hints": [
+        {
+          "after_frames": 6,
+          "text": "The available frame budget depends on both rate and telemetry interval."
+        },
+        {
+          "after_frames": 18,
+          "text": "Look for the low-gain link rate in the mission configuration."
+        }
+      ]
+    }
+  ]
+}

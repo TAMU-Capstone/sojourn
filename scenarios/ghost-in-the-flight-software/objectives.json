@@ -1,0 +1,103 @@
+{
+  "format": 1,
+  "objectives": [
+    {
+      "id": "code-recorder",
+      "title": "Halt the runaway recorder",
+      "brief": "Patch the executable recorder task to stop additional recorder fill while preserving telemetry.",
+      "points": 25,
+      "success": {
+        "op": "sustained",
+        "frames": 3,
+        "of": {
+          "op": "all",
+          "of": [
+            {
+              "op": "mem_changed",
+              "at": {
+                "sym": "task_recorder"
+              },
+              "len": 8
+            },
+            {
+              "op": "mem_u16",
+              "at": {
+                "sym": "g_rec_fill"
+              },
+              "cmp": "eq",
+              "value": 0
+            }
+          ]
+        }
+      },
+      "hints": [
+        {
+          "after_frames": 6,
+          "text": "The recorder is a scheduled function with a designated eight-byte entry pad."
+        },
+        {
+          "after_frames": 18,
+          "text": "A return from a function can be encoded in Thumb without rewriting its whole body."
+        }
+      ]
+    },
+    {
+      "id": "injection-mag",
+      "title": "Install autonomous instrument recovery",
+      "brief": "Inject a recurring task hook in free RAM, detour an existing scheduled task through it, and restore magnetometer reports.",
+      "requires": [
+        "code-recorder"
+      ],
+      "points": 25,
+      "success": {
+        "op": "sustained",
+        "frames": 5,
+        "of": {
+          "op": "all",
+          "of": [
+            {
+              "op": "mem_changed",
+              "at": {
+                "sym": "task_acs"
+              },
+              "len": 8
+            },
+            {
+              "op": "mem_changed",
+              "at": {
+                "sym": "scenario_injection_cave"
+              },
+              "len": 32
+            },
+            {
+              "op": "channel_present",
+              "id": "MAG"
+            },
+            {
+              "op": "mem_u8",
+              "at": {
+                 "sym": "poll_enable"
+              },
+              "cmp": "eq",
+              "value": 1
+            }
+          ]
+        }
+      },
+      "hints": [
+        {
+          "after_frames": 6,
+          "text": "The firmware provides a 4 KiB free-RAM code cave and patchable task entry pads."
+        },
+        {
+          "after_frames": 18,
+          "text": "The detour must return to the original task after its eight-byte entry pad."
+        },
+        {
+          "after_frames": 30,
+          "text": "One-time changes are not sufficient: the installed hook must keep executing."
+        }
+      ]
+    }
+  ]
+}

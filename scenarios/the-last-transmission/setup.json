@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "writes": [
+    {
+      "at": {
+        "sym": "g_config",
+        "field": "hga_fail_after_s"
+      },
+      "u32": 20,
+      "note": "Trigger the documented HGA jam and LGA fallback."
+    },
+    {
+      "at": {
+        "sym": "g_config",
+        "field": "lga_rate_bps"
+      },
+      "u16": 64,
+      "note": "Constrain low-gain downlink; restore by configuration change."
+    }
+  ],
+  "settle_frames": 0
+}
