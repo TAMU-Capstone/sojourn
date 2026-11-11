@@ -1,0 +1,4 @@
+{"seq": 1, "t_ms": null, "raw": "POKE 0x20019180 00000000", "verb": "POKE", "charged": "writes", "result": "ACK POKE 4"}
+{"seq": 2, "t_ms": null, "raw": "POKE 0x200190E4 E8030000", "verb": "POKE", "charged": "writes", "result": "ACK POKE 4"}
+{"seq": 3, "t_ms": null, "raw": "POKE 0x20019068 E8030000", "verb": "POKE", "charged": "writes", "result": "ACK POKE 4"}
+{"seq": 4, "t_ms": null, "raw": "POKE 0x20019181 01", "verb": "POKE", "charged": "writes", "result": "ACK POKE 1"}

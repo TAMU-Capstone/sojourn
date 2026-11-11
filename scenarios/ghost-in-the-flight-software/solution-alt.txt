@@ -1,19 +1,14 @@
 # ALTERNATIVE SOLUTION (R9.2): a second patch strategy for each objective.
-# Instructor material; see VALIDATION_NOTES.md for the comparison with solution.txt.
+# Instructor material; see SOLUTIONS.md for the comparison with solution.txt.
 #
 # code-recorder, strategy B: keep the task running but zero its generation term.
 # At task_recorder's mid-body patch point (0x200022FA), r1 holds the summed generation
 # and r0 the drain rate. MOVS r1,#0 forces the drain branch every call, so the buffer
 # empties on its own at rec_downlink_rate (64/s) and no manual write to g_rec_fill is needed.
-# Expect ~13 frames for a full 4096-byte buffer to reach zero.
-#
-# First, watch the backlog build (reads only; they cost no write budget).
-PEEK 0x20019326 2
-PEEK 0x20019326 2
-PEEK 0x20019326 2
+# Expect ~7 frames for the full 2048-byte buffer to reach zero.
 POKE 0x200022FA 0021
 # injection-mag, strategy B: no trampoline. Put a self-contained routine in the cave
-# and register it in the scheduler's empty hook slot 12, which the firmware leaves for this.
+# and register it in the scheduler's empty hook slot 12 (slot 13 is where the ghost lives).
 #   ldr r0,=poll_enable; movs r1,#1; strb r1,[r0]; bx lr; .word poll_enable
 POKE 0x2001D000 014801210170704780910120
 # task_table[12] = { handler = cave|1, period = 100 (1 Hz), countdown = 1, flags = ENABLED }

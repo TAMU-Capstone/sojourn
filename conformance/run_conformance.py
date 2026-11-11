@@ -52,6 +52,11 @@ FIXTURES = [
     ("comms-triage",   "comms-triage-solution"),
     ("comms-triage",   "comms-triage-passive"),
     ("heater-runaway", "heater-runaway-solution"),
+    ("the-last-transmission",        "last-transmission-solution"),
+    ("the-last-transmission",        "last-transmission-alt"),
+    ("ghost-in-the-flight-software", "ghost-solution"),
+    ("ghost-in-the-flight-software", "ghost-alt"),
+    ("ghost-in-the-flight-software", "ghost-hand-poke"),
     ("grader-hygiene", "grader-hygiene"),
 ]
 

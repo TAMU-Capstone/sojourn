@@ -1,5 +1,5 @@
 # ALTERNATIVE SOLUTION (R9.2): a second patch strategy for each objective.
-# Instructor material; see VALIDATION_NOTES.md for the comparison with solution.txt.
+# Instructor material; see SOLUTIONS.md for the comparison with solution.txt.
 #
 # data-priority, strategy B: leave tlm_priority alone and stop polling the four
 # science channels ranked ahead of RAD (poll_enable[MAG..PWR] = 0). A channel that

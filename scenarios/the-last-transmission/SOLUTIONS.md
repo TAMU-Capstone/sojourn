@@ -1,9 +1,9 @@
 # Solutions: The Last Transmission (Instructor Only; Do Not Ship)
 
-Each graded objective has two documented patch strategies (charter R9.2).
-Strategy A is `solution.txt` and strategy B is `solution-alt.txt`. Both are
-runnable with `firmware/tools/scenario_eval.py --script`, and both complete
-every objective.
+Revision 2. Each graded objective has two documented patch strategies (charter
+R9.2). Strategy A is `solution.txt` and strategy B is `solution-alt.txt`. Both
+are runnable with `firmware/tools/scenario_eval.py --script`, both complete
+every objective, and both are replayed by `conformance/run_conformance.py`.
 
 ## The squeeze
 
@@ -21,8 +21,12 @@ in `tlm_priority` order that is being polled wins, which is MAG by default.
 | Idea | Move RAD (0x04) ahead of the other sensors | Stop polling MAG, IMU, THM, PWR. An unpolled channel has size 0 in the triage, so RAD is the first one that fits. |
 | Cost | Leaves the other science channels in polling | Four instruments go dark until there is bandwidth again |
 
-Predicate: `sustained` 3 frames of LGA, RAD present, and *either* table changed.
-Both surfaces are data tables, so the objective is still a data patch (R9.1).
+**Success**, `sustained` 3 frames: on LGA, RAD present, and *either* table changed.
+Both surfaces are data tables, so this remains a data-patch objective (R9.1).
+
+**Partials:**
+- A table was changed but RAD is still squeezed out (the byte-count hint).
+- RAD came back only because the link was widened, which is the next objective's fix.
 
 ## `config-bandwidth` (configuration patch)
 
@@ -39,19 +43,31 @@ Strategy B notes:
   over-runs the link, which the model does not catch. The honest version also
   writes `task_table[6].period` at `task_table+0x64`.
 - `task_table+0x60` is the *handler*, not the period. Writing 1000 there
-  crashes the probe into a reboot. This is a good trap to discuss.
+  crashes the probe into a reboot, which now fails the objective. This is a
+  good trap to discuss.
 - If B was also used for `data-priority`, IMU has to be re-enabled
   (`poll_enable[1] = 1`) for the objective's IMU-present check.
 
-Predicate: `sustained` 3 frames of LGA, RAD and IMU present, and *either*
+**Success**, `sustained` 3 frames: on LGA, RAD and IMU present, and *either*
 `lga_rate_bps > 64` or `tlm_period > 500`.
 
-## Verified
+**Partials:**
+- Budget raised but IMU absent ("is it actually being polled?").
+- Budget raised but RAD dropped out again.
 
-Both scripts were run end to end in QEMU against the current `objectives.json`
-(2026-11-11):
+## Both objectives
+
+- **Fail** if the probe enters SAFE mode or reboots. A reboot wipes the
+  scenario's setup, so the run cannot be recovered.
+- **Write budget** is 12. Strategy A uses 2 writes and strategy B uses 4.
+
+## Grading tests
+
+Run in QEMU with the reference evaluator on 2026-11-11. The fixtures marked ✓
+are replayed by the conformance suite.
 
 | Script | `data-priority` | `config-bandwidth` | Writes |
 |---|---|---|---|
-| `solution.txt` | complete, frame 7 | complete, frame 9 | 2 |
-| `solution-alt.txt` | complete, frame 6 | complete, frame 8 | 4 |
+| `solution.txt` ✓ | complete, frame 7 | complete, frame 9 | 2 |
+| `solution-alt.txt` ✓ | complete, frame 6 | complete, frame 8 | 4 |
+| Raise `lga_rate_bps` only (skip the data patch) | **active**, with the "next objective's fix" partial | locked | 1 |

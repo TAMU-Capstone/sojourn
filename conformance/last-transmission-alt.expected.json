@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "scenario": "sojourn.recovery.last-transmission",
+  "revision": 2,
+  "frames": 16,
+  "objectives": [
+    {
+      "id": "data-priority",
+      "state": "complete",
+      "first_frame": 6
+    },
+    {
+      "id": "config-bandwidth",
+      "state": "complete",
+      "first_frame": 8
+    }
+  ],
+  "budget": {
+    "writes": 4,
+    "reads": 0
+  }
+}

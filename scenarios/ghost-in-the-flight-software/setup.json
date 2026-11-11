@@ -7,14 +7,7 @@
         "field": "hga_fail_after_s"
       },
       "u32": 20,
-      "note": "Trigger the documented HGA jam and LGA fallback."
-    },
-    {
-      "at": {
-        "sym": "poll_enable"
-      },
-      "u8": 0,
-      "note": "Disable MAG polling; the injected recurring task hook must restore it."
+      "note": "Trigger the documented HGA jam and LGA fallback. On the low-gain budget only one science channel fits, and MAG is first in priority, so whether MAG is alive is visible at a glance."
     },
     {
       "at": {
@@ -22,8 +15,47 @@
         "field": "rec_gen_per_sensor"
       },
       "u16": 100,
-      "note": "Increase recorder pressure; code patch is intended to stop the recorder task."
+      "note": "Recorder generation far above drain (5 x 100 vs 64 per second): the buffer saturates within seconds."
+    },
+    {
+      "at": {
+        "sym": "g_config",
+        "field": "rec_buffer_max"
+      },
+      "u16": 2048,
+      "note": "Half-size recorder buffer, so a patch that lets it drain naturally empties it in ~32 s rather than ~64."
+    },
+    {
+      "at": {
+        "sym": "poll_enable"
+      },
+      "u8": 0,
+      "note": "MAG polling off from the start."
+    },
+    {
+      "at": {
+        "sym": "scenario_injection_cave",
+        "offset": 4080
+      },
+      "u16": 0,
+      "note": "The ghost's tally (u16 at cave+0xFF0): how many times it found MAG polling switched back on. The injection objective grades on this, which is what distinguishes a recurring hook from a one-off write."
+    },
+    {
+      "at": {
+        "sym": "scenario_injection_cave",
+        "offset": 3840
+      },
+      "hex": "0448017819B1044A13880133138000210170704780910120F0DF0120",
+      "note": "The ghost, at cave+0xF00: if poll_enable[MAG] is set, bump the tally; then clear it. ldr r0,=poll_enable; ldrb r1,[r0]; cbz r1,1f; ldr r2,=tally; ldrh r3,[r2]; adds r3,#1; strh r3,[r2]; 1: movs r1,#0; strb r1,[r0]; bx lr"
+    },
+    {
+      "at": {
+        "sym": "task_table",
+        "offset": 208
+      },
+      "hex": "01DF0120E8030000E803000001000000",
+      "note": "Register the ghost in scheduler hook slot 13: handler cave+0xF00|1, every 10 s, enabled. Written after the code it points at."
     }
   ],
-  "settle_frames": 0
+  "settle_frames": 3
 }
