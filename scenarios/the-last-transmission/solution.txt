@@ -1,0 +1,5 @@
+# move RAD (0x04) up to third in tlm_priority, behind COMMS and HK, so it survives the LGA squeeze
+# order: COMMS HK RAD MAG IMU THM PWR STR CAM AUX
+POKE 0x20019438 6160040001020305435A
+# raise g_config.lga_rate_bps from 64 to 128 (u16 little-endian, 0x0080): 40 -> 80 B/frame, room for IMU
+POKE 0x20019164 8000

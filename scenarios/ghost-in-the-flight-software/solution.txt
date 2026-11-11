@@ -1,0 +1,10 @@
+# stub task_recorder's entry pad: BX LR, then NOPs, so the task returns before touching the buffer
+POKE 0x200022C4 704700BF00BF00BF
+# drain what it already accumulated (g_rec_fill, u16); the stub keeps it at zero from here on
+POKE 0x20019326 0000
+# hook in the code cave: poll_enable[MAG] = 1, then jump to task_acs+8 (past its entry pad)
+#   ldr r0,=poll_enable; movs r1,#1; strb r1,[r0]; ldr r2,=task_acs+8|1; bx r2; nop
+POKE 0x2001D000 024801210170024A104700BF8091012079220020
+# detour task_acs's entry pad into the cave: LDR.W PC,[PC,#0] / .word 0x2001D001
+# (cave first: detouring into empty RAM would crash the scheduler)
+POKE 0x20002270 DFF800F001D00120
