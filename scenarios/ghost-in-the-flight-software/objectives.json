@@ -17,7 +17,7 @@
               "at": {
                 "sym": "task_recorder"
               },
-              "len": 8
+              "len": 124
             },
             {
               "op": "mem_u16",
@@ -33,7 +33,7 @@
       "hints": [
         {
           "after_frames": 6,
-          "text": "The recorder is a scheduled function with a designated eight-byte entry pad."
+          "text": "The recorder is a scheduled function with an eight-byte entry pad and a second patch point in its body."
         },
         {
           "after_frames": 18,
@@ -44,7 +44,7 @@
     {
       "id": "injection-mag",
       "title": "Install autonomous instrument recovery",
-      "brief": "Inject a recurring task hook in free RAM, detour an existing scheduled task through it, and restore magnetometer reports.",
+      "brief": "Inject a recurring routine in free RAM, get the scheduler to run it every cycle, and restore magnetometer reports.",
       "requires": [
         "code-recorder"
       ],
@@ -56,11 +56,32 @@
           "op": "all",
           "of": [
             {
-              "op": "mem_changed",
-              "at": {
-                "sym": "task_acs"
-              },
-              "len": 8
+              "op": "any",
+              "of": [
+                {
+                  "op": "mem_changed",
+                  "at": {
+                    "sym": "task_acs"
+                  },
+                  "len": 8
+                },
+                {
+                  "op": "mem_changed",
+                  "at": {
+                    "sym": "task_table",
+                    "offset": 192
+                  },
+                  "len": 4
+                },
+                {
+                  "op": "mem_changed",
+                  "at": {
+                    "sym": "task_table",
+                    "offset": 208
+                  },
+                  "len": 4
+                }
+              ]
             },
             {
               "op": "mem_changed",
@@ -76,7 +97,7 @@
             {
               "op": "mem_u8",
               "at": {
-                 "sym": "poll_enable"
+                "sym": "poll_enable"
               },
               "cmp": "eq",
               "value": 1
@@ -91,7 +112,7 @@
         },
         {
           "after_frames": 18,
-          "text": "The detour must return to the original task after its eight-byte entry pad."
+          "text": "Either detour an existing task (and return past its eight-byte entry pad) or register the routine in one of the scheduler's two empty slots."
         },
         {
           "after_frames": 30,
