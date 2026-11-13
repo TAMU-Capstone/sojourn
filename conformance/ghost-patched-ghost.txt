@@ -1,0 +1,8 @@
+# Negative fixture: turn the ghost itself into the hook. movs r1,#0 -> movs r1,#1 at
+# cave+0xF0E makes it set poll_enable[MAG] every run and bump its own tally. The cave
+# and slot-12 handler get edits that never execute (slot 12 stays disabled).
+# injection-mag must stay active: the ghost has to run as installed.
+POKE 0x200022FA 0021
+POKE 0x2001DF0E 0121
+POKE 0x2001D000 00BF00BF
+POKE 0x200190C4 01D00120

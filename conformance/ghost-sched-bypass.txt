@@ -1,0 +1,7 @@
+# Negative fixture: stop the recorder through the scheduler instead of its code.
+# Clear task_table[10].flags (task_recorder's slot), make a dead edit to task_recorder
+# so its "code changed" check passes, then zero the backlog. code-recorder must stay
+# active: this is a data patch, and the recorder's scheduler entry has to be intact.
+POKE 0x200190B0 00000000
+POKE 0x200022C4 00460046
+POKE 0x20019326 0000

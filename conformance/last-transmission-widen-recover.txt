@@ -1,0 +1,6 @@
+# Positive fixture: a player who widened first follows the partial's advice. Put
+# lga_rate_bps back to 64, re-rank RAD, then widen again. Both objectives complete.
+POKE 0x20019164 8000
+POKE 0x20019164 4000
+POKE 0x20019438 6160040001020305435A
+POKE 0x20019164 8000

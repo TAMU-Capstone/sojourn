@@ -231,7 +231,7 @@ def validate(path, strict=False):
         return rep
 
     known = set(REQUIRED_MANIFEST) | {"author", "summary", "difficulty", "link",
-                                      "setup", "docs", "impure"}
+                                      "setup", "docs", "impure", "console"}
     for k in man:
         if k not in known:
             rep.warn(f"manifest has unrecognised key {k!r}")

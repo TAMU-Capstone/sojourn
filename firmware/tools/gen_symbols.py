@@ -30,6 +30,13 @@ KEY_SYMBOLS = [
     "rom_services", "rom_prot", "vectors",
 ]
 
+# Names for fixed addresses that have no ELF symbol. The code cave is the
+# FREE_RAM region below: nothing is linked there, so `nm` cannot find it, but
+# scenarios address injected code by name rather than by number.
+FIXED_SYMBOLS = {
+    "scenario_injection_cave": 0x2001D000,
+}
+
 MEMMAP = [
     {"name": "ROM_VECTORS",   "lo": 0x00000000, "hi": 0x00000400, "poke": "refused"},
     {"name": "ROM_BOOT",      "lo": 0x00000400, "hi": 0x00004000, "poke": "refused"},
@@ -131,6 +138,7 @@ def struct_offsets(elf: str, typedef_name: str) -> dict:
 def main(app_elf: str, rom_elf: str, out_dir: str) -> None:
     syms = nm(rom_elf) | nm(app_elf)   # app wins on duplicates
     picked = {k: f"0x{syms[k]:08X}" for k in KEY_SYMBOLS if k in syms}
+    picked |= {k: f"0x{v:08X}" for k, v in FIXED_SYMBOLS.items()}
     missing = [k for k in KEY_SYMBOLS if k not in syms]
     if missing:
         print(f"warning: missing symbols: {missing}", file=sys.stderr)

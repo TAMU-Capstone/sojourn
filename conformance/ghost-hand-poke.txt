@@ -1,0 +1,11 @@
+# Negative fixture: fix the recorder properly, make no-op edits to the cave and task_acs
+# so the hook checks pass, then hand-write poll_enable[MAG] repeatedly. The ghost tally
+# reaches 3, but injection-mag must stay active because the flag was poked from the ground.
+POKE 0x200022C4 704700BF00BF00BF
+POKE 0x20019326 0000
+POKE 0x2001D000 00460046
+POKE 0x20002270 0046004600460046
+POKE 0x20019180 01
+POKE 0x20019180 01
+POKE 0x20019180 01
+POKE 0x20019180 01

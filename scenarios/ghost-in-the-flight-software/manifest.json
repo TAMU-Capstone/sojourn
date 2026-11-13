@@ -2,7 +2,7 @@
   "format": 1,
   "id": "sojourn.recovery.ghost-flight-software",
   "title": "Ghost in the Flight Software",
-  "revision": 1,
+  "revision": 3,
   "author": "ISA Flight Operations",
   "summary": "Patch runaway archive processing and inject recurring magnetometer recovery code.",
   "difficulty": "advanced",
@@ -17,7 +17,7 @@
     "downlink_delay_s": 8,
     "require_checksum": true,
     "budget": {
-      "writes": 60,
+      "writes": 12,
       "reads": 2000
     }
   },

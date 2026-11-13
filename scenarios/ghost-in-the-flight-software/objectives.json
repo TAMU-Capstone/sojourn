@@ -4,7 +4,7 @@
     {
       "id": "code-recorder",
       "title": "Halt the runaway recorder",
-      "brief": "Patch the executable recorder task to stop additional recorder fill while preserving telemetry.",
+      "brief": "Patch the recorder task's code so the archive buffer empties and stays empty, without switching off instruments or changing the recorder's configuration.",
       "points": 25,
       "success": {
         "op": "sustained",
@@ -17,7 +17,7 @@
               "at": {
                 "sym": "task_recorder"
               },
-              "len": 8
+              "len": 124
             },
             {
               "op": "mem_u16",
@@ -26,76 +26,813 @@
               },
               "cmp": "eq",
               "value": 0
+            },
+            {
+              "op": "not",
+              "of": {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "g_config",
+                  "field": "rec_enable"
+                },
+                "len": 8
+              }
+            },
+            {
+              "op": "not",
+              "of": {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "poll_enable",
+                  "offset": 1
+                },
+                "len": 5
+              }
+            },
+            {
+              "op": "mem_bits",
+              "at": {
+                "addr": "0x2001E010"
+              },
+              "width": 4,
+              "mask": 1,
+              "cmp": "eq",
+              "value": 1
+            },
+            {
+              "op": "mem_bits",
+              "at": {
+                "addr": "0x2001E020"
+              },
+              "width": 4,
+              "mask": 1,
+              "cmp": "eq",
+              "value": 1
+            },
+            {
+              "op": "mem_bits",
+              "at": {
+                "addr": "0x2001E030"
+              },
+              "width": 4,
+              "mask": 1,
+              "cmp": "eq",
+              "value": 1
+            },
+            {
+              "op": "mem_bits",
+              "at": {
+                "addr": "0x2001E040"
+              },
+              "width": 4,
+              "mask": 1,
+              "cmp": "eq",
+              "value": 1
+            },
+            {
+              "op": "mem_bits",
+              "at": {
+                "addr": "0x2001E050"
+              },
+              "width": 4,
+              "mask": 1,
+              "cmp": "eq",
+              "value": 1
+            },
+            {
+              "op": "not",
+              "of": {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 160
+                },
+                "len": 8
+              }
+            },
+            {
+              "op": "not",
+              "of": {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 172
+                },
+                "len": 4
+              }
             }
           ]
         }
       },
+      "fail": {
+        "op": "any",
+        "of": [
+          {
+            "op": "tlm",
+            "path": "mode",
+            "cmp": "eq",
+            "value": "SAFE"
+          },
+          {
+            "op": "tlm",
+            "path": "reboots",
+            "cmp": "gt",
+            "value": 0
+          }
+        ]
+      },
+      "partial": [
+        {
+          "when": {
+            "op": "mem_changed",
+            "at": {
+              "sym": "g_config",
+              "field": "rec_enable"
+            },
+            "len": 8
+          },
+          "text": "The recorder's configuration has been changed. That would stop the fill, but this objective is about the code: put the configuration back as you found it and patch the task itself."
+        },
+        {
+          "when": {
+            "op": "any",
+            "of": [
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 160
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 172
+                },
+                "len": 4
+              }
+            ]
+          },
+          "text": "The recorder's entry in the scheduler has been changed, so the task no longer runs the way it was built to. That is a change to a table, not to the code: put the entry back as you found it and patch the task itself."
+        },
+        {
+          "when": {
+            "op": "any",
+            "of": [
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "poll_enable",
+                  "offset": 1
+                },
+                "len": 5
+              },
+              {
+                "op": "not",
+                "of": {
+                  "op": "mem_bits",
+                  "at": {
+                    "addr": "0x2001E010"
+                  },
+                  "width": 4,
+                  "mask": 1,
+                  "cmp": "eq",
+                  "value": 1
+                }
+              },
+              {
+                "op": "not",
+                "of": {
+                  "op": "mem_bits",
+                  "at": {
+                    "addr": "0x2001E020"
+                  },
+                  "width": 4,
+                  "mask": 1,
+                  "cmp": "eq",
+                  "value": 1
+                }
+              },
+              {
+                "op": "not",
+                "of": {
+                  "op": "mem_bits",
+                  "at": {
+                    "addr": "0x2001E030"
+                  },
+                  "width": 4,
+                  "mask": 1,
+                  "cmp": "eq",
+                  "value": 1
+                }
+              },
+              {
+                "op": "not",
+                "of": {
+                  "op": "mem_bits",
+                  "at": {
+                    "addr": "0x2001E040"
+                  },
+                  "width": 4,
+                  "mask": 1,
+                  "cmp": "eq",
+                  "value": 1
+                }
+              },
+              {
+                "op": "not",
+                "of": {
+                  "op": "mem_bits",
+                  "at": {
+                    "addr": "0x2001E050"
+                  },
+                  "width": 4,
+                  "mask": 1,
+                  "cmp": "eq",
+                  "value": 1
+                }
+              }
+            ]
+          },
+          "text": "Fewer reporting instruments means less recorder fill, but the brief is to keep telemetry intact. Restore the instruments and fix the recorder instead."
+        },
+        {
+          "when": {
+            "op": "all",
+            "of": [
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_recorder"
+                },
+                "len": 124
+              },
+              {
+                "op": "tlm",
+                "path": "channels.HK.rec_fill_pct",
+                "cmp": "gt",
+                "value": 0
+              }
+            ]
+          },
+          "text": "The recorder code has changed, but the buffer is not empty. A patch that stops the task leaves the backlog where it was; a patch that lets it drain needs time. Which did you write?"
+        }
+      ],
       "hints": [
         {
           "after_frames": 6,
-          "text": "The recorder is a scheduled function with a designated eight-byte entry pad."
+          "text": "Housekeeping reports the recorder's fill level. The recorder is a scheduled function with an eight-byte entry pad and a second patch point in its body."
         },
         {
           "after_frames": 18,
-          "text": "A return from a function can be encoded in Thumb without rewriting its whole body."
+          "text": "A return from a function can be encoded in Thumb without rewriting its whole body. So can zeroing the register that holds what it generates."
         }
       ]
     },
     {
       "id": "injection-mag",
       "title": "Install autonomous instrument recovery",
-      "brief": "Inject a recurring task hook in free RAM, detour an existing scheduled task through it, and restore magnetometer reports.",
+      "brief": "Something keeps switching magnetometer polling off. Inject a routine in free RAM that the scheduler runs every cycle, so the magnetometer keeps coming back on its own.",
       "requires": [
         "code-recorder"
       ],
       "points": 25,
       "success": {
-        "op": "sustained",
-        "frames": 5,
-        "of": {
-          "op": "all",
-          "of": [
-            {
-              "op": "mem_changed",
-              "at": {
-                "sym": "task_acs"
-              },
-              "len": 8
+        "op": "all",
+        "of": [
+          {
+            "op": "mem_changed",
+            "at": {
+              "sym": "scenario_injection_cave"
             },
-            {
-              "op": "mem_changed",
-              "at": {
-                "sym": "scenario_injection_cave"
+            "len": 32
+          },
+          {
+            "op": "any",
+            "of": [
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_wdg_pet"
+                },
+                "len": 8
               },
-              "len": 32
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_physics"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_sensor_poll"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_fault_monitor"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_camera"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_telemetry"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_cmd"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "cmd_poll_rx"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_heater"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_power_mgr"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_acs"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_comms"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "image_process"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "enter_safe"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 192
+                },
+                "len": 4
+              }
+            ]
+          },
+          {
+            "op": "mem_u16",
+            "at": {
+              "sym": "scenario_injection_cave",
+              "offset": 4080
             },
-            {
+            "cmp": "gte",
+            "value": 3
+          },
+          {
+            "op": "within",
+            "frames": 2,
+            "of": {
               "op": "channel_present",
               "id": "MAG"
-            },
-            {
-              "op": "mem_u8",
-              "at": {
-                 "sym": "poll_enable"
-              },
-              "cmp": "eq",
-              "value": 1
             }
-          ]
-        }
+          },
+          {
+            "op": "not",
+            "of": {
+              "op": "ever",
+              "of": {
+                "op": "commanded",
+                "verb": "POKE",
+                "at": {
+                  "sym": "poll_enable"
+                }
+              }
+            }
+          },
+          {
+            "op": "not",
+            "of": {
+              "op": "ever",
+              "of": {
+                "op": "commanded",
+                "verb": "POKE",
+                "at": {
+                  "sym": "scenario_injection_cave",
+                  "offset": 4080
+                }
+              }
+            }
+          },
+          {
+            "op": "not",
+            "of": {
+              "op": "mem_changed",
+              "at": {
+                "sym": "scenario_injection_cave",
+                "offset": 3840
+              },
+              "len": 28
+            }
+          },
+          {
+            "op": "not",
+            "of": {
+              "op": "mem_changed",
+              "at": {
+                "sym": "task_table",
+                "offset": 208
+              },
+              "len": 4
+            }
+          },
+          {
+            "op": "mem_bits",
+            "at": {
+              "sym": "task_table",
+              "offset": 220
+            },
+            "width": 4,
+            "mask": 1,
+            "cmp": "eq",
+            "value": 1
+          }
+        ]
       },
+      "fail": {
+        "op": "any",
+        "of": [
+          {
+            "op": "tlm",
+            "path": "mode",
+            "cmp": "eq",
+            "value": "SAFE"
+          },
+          {
+            "op": "tlm",
+            "path": "reboots",
+            "cmp": "gt",
+            "value": 0
+          }
+        ]
+      },
+      "partial": [
+        {
+          "when": {
+            "op": "ever",
+            "of": {
+              "op": "commanded",
+              "verb": "POKE",
+              "at": {
+                "sym": "poll_enable"
+              }
+            }
+          },
+          "text": "Writing the polling flag from the ground turns MAG on once, and whatever switched it off will do so again. This objective needs code on the probe that keeps restoring it, and it can no longer be completed by hand-writing the flag."
+        },
+        {
+          "when": {
+            "op": "any",
+            "of": [
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "scenario_injection_cave",
+                  "offset": 3840
+                },
+                "len": 28
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 208
+                },
+                "len": 4
+              },
+              {
+                "op": "mem_bits",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 220
+                },
+                "width": 4,
+                "mask": 1,
+                "cmp": "eq",
+                "value": 0
+              }
+            ]
+          },
+          "text": "You've found what keeps switching MAG off and disabled or changed it. That fixes the symptom, but the objective is your own recurring code keeping MAG alive with the culprit still running as it was. Put it back."
+        },
+        {
+          "when": {
+            "op": "all",
+            "of": [
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "scenario_injection_cave"
+                },
+                "len": 32
+              },
+              {
+                "op": "not",
+                "of": {
+                  "op": "any",
+                  "of": [
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_wdg_pet"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_physics"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_sensor_poll"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_fault_monitor"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_camera"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_telemetry"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_cmd"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "cmd_poll_rx"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_heater"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_power_mgr"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_acs"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_comms"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "image_process"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "enter_safe"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_table",
+                        "offset": 192
+                      },
+                      "len": 4
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "text": "There is code in the free-RAM cave, but nothing calls it yet."
+        },
+        {
+          "when": {
+            "op": "all",
+            "of": [
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "scenario_injection_cave"
+                },
+                "len": 32
+              },
+              {
+                "op": "any",
+                "of": [
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_wdg_pet"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_physics"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_sensor_poll"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_fault_monitor"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_camera"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_telemetry"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_cmd"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "cmd_poll_rx"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_heater"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_power_mgr"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_acs"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_comms"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "image_process"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "enter_safe"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_table",
+                      "offset": 192
+                    },
+                    "len": 4
+                  }
+                ]
+              }
+            ]
+          },
+          "text": "Your hook is installed. MAG keeps getting switched off; if the hook keeps running it will keep switching it back on. Give it a few cycles."
+        }
+      ],
       "hints": [
         {
           "after_frames": 6,
-          "text": "The firmware provides a 4 KiB free-RAM code cave and patchable task entry pads."
+          "text": "Turning magnetometer polling on from the ground doesn't last. Watch poll_enable across frames, then look at what the scheduler is running."
         },
         {
           "after_frames": 18,
-          "text": "The detour must return to the original task after its eight-byte entry pad."
+          "text": "The firmware leaves free RAM for code and patchable entry pads on its tasks. Either detour an existing task (and return past its eight-byte entry pad) or register the routine in an empty scheduler slot."
         },
         {
           "after_frames": 30,
-          "text": "One-time changes are not sufficient: the installed hook must keep executing."
+          "text": "One-time changes are not sufficient: the installed routine must keep executing."
         }
       ]
     }

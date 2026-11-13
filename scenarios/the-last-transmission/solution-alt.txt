@@ -1,0 +1,28 @@
+# ALTERNATIVE SOLUTION (R9.2): a second patch strategy for each objective.
+# Instructor material; see SOLUTIONS.md for the comparison with solution.txt.
+#
+# data-priority, strategy B: leave tlm_priority alone and stop polling the four
+# science channels ranked ahead of RAD (poll_enable[MAG..PWR] = 0). A channel that
+# is not polled has size 0 in the triage, so RAD becomes the first science channel
+# that fits in the 9 bytes left after header, COMMS and HK.
+POKE 0x20019180 00000000
+# wait for data-priority to complete before widening the link: it is graded on the
+# squeezed 40-byte budget, and config-bandwidth is not revealed until it completes.
+# NOOP is free (charged to neither budget); the evaluator applies one move per frame.
+NOOP
+NOOP
+NOOP
+NOOP
+NOOP
+NOOP
+NOOP
+NOOP
+# config-bandwidth, strategy B: leave lga_rate_bps alone and slow the cadence instead.
+# budget = rate * tlm_period / (TICK_HZ * 8), so 5 s -> 10 s doubles it: 40 -> 80 B/frame.
+# g_config.tlm_period (u32, ticks at 100 Hz) = 1000
+POKE 0x200190E4 E8030000
+# task_table[6] (task_telemetry) .period at task_table+0x64 (handler is +0x60; do not hit it) = 1000, so frames really do go out every 10 s;
+# without this the budget doubles but the cadence does not, which over-runs the link
+POKE 0x20019068 E8030000
+# with 80 B/frame there is room again: re-enable IMU polling
+POKE 0x20019181 01

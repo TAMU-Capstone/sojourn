@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "scenario": "sojourn.recovery.ghost-flight-software",
+  "revision": 2,
+  "frames": 15,
+  "objectives": [
+    {
+      "id": "code-recorder",
+      "state": "complete",
+      "first_frame": 9
+    },
+    {
+      "id": "injection-mag",
+      "state": "complete",
+      "first_frame": 9
+    }
+  ],
+  "budget": {
+    "writes": 3,
+    "reads": 0
+  }
+}

@@ -1,14 +1,35 @@
-# Reference Scenario Packages
+# Scenario Packages
 
-Two worked packages, both **pure content**: no executable predicates, no
-platform code. They are the material the *Scenario Package Format*
-specification (`docs/scenario_format.md`) describes, and the thing to copy
-when authoring a third.
+All packages are **pure content**: no executable predicates, no platform
+code. They are the material the *Scenario Package Format* specification
+(`docs/scenario_format.md`) describes.
+
+## Shipped missions
+
+These are the reference scenarios the platform ships. Between them they cover
+all four patch styles (charter R9.1). Every objective has two documented,
+tested solutions (R9.2): `solution.txt` and `solution-alt.txt`, compared in
+each package's `SOLUTIONS.md`.
+
+| Package | Objectives | What it exercises |
+|---|---|---|
+| `the-last-transmission/` | 2 | The high-gain antenna jams. Get RAD into the squeezed low-gain downlink with a **data patch** (priority table, or polling table), then widen the link with a **configuration patch** (link rate, or telemetry cadence). |
+| `ghost-in-the-flight-software/` | 2 | A runaway recorder fixed by a **code patch** (stub the task, or zero its generation term), then a magnetometer that something keeps switching off, kept alive by a **code injection** (trampoline from a task's entry pad, or a routine registered in an empty scheduler slot). |
+
+## Samples
+
+Worked examples for authors and fixtures for the conformance suite. Not
+player content.
 
 | Package | Objectives | What it exercises |
 |---|---|---|
 | `first-contact/` | 3 | Establishing the link, reading the downlink, powering down an instrument and proving from telemetry that its channel is *gone* rather than zero. Telemetry and command-log predicates. |
 | `comms-triage/` | 4 | The Galileo bandwidth scenario. Diagnosis from the COMMS channel, the deliberate dead end of re-deploying a jammed dish, restoring the radiation counter by re-ranking the priority table, and doing it inside the uplink budget. Register, data and config patches; bit tests; `sustained`; budget accounting. |
+| `heater-runaway/` | 1 | A stuck survival heater causing load shedding. Effect-based success with `partial` diagnostics. |
+
+Instructor-only files (`solution*.txt`, `solution*.jsonl`, `SOLUTIONS.md`,
+`VALIDATION_NOTES.md`) are excluded from the player image by
+`scripts/copy-scenarios.sh`'s allowlist in the platform repository.
 
 ## Running one
 
@@ -31,7 +52,7 @@ A run takes about two minutes of wall clock, because the probe emits one
 telemetry frame every five seconds and the evaluator waits for real frames
 rather than fast-forwarding.
 
-## Authoring a third
+## Authoring another
 
 1. Copy `first-contact/` and change `manifest.json`'s `id` and `title`.
 2. Refresh `firmware/` from a current build: `symbols.json`, `memmap.json` and
@@ -47,7 +68,7 @@ rather than fast-forwarding.
    solved end to end is not finished.
 
 Two failure modes worth knowing about in advance, both found while writing
-these two packages:
+the sample packages:
 
 - **`commanded` without `"result": "ACK"` matches a rejected command.** The
   log records refusals deliberately (they cost budget and they are evidence),
