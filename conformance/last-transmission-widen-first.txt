@@ -1,0 +1,5 @@
+# Negative fixture: widen the link first, then make an irrelevant tlm_priority edit
+# (swap CAM and AUX). RAD only fits because the budget grew, so data-priority must
+# stay active and config-bandwidth locked.
+POKE 0x20019164 8000
+POKE 0x20019438 61600001020304055A43

@@ -40,6 +40,12 @@
             {
               "op": "channel_present",
               "id": "RAD"
+            },
+            {
+              "op": "tlm",
+              "path": "channels.COMMS.budget",
+              "cmp": "lte",
+              "value": 40
             }
           ]
         }
@@ -114,57 +120,20 @@
             "op": "all",
             "of": [
               {
-                "op": "not",
-                "of": {
-                  "op": "any",
-                  "of": [
-                    {
-                      "op": "mem_changed",
-                      "at": {
-                        "sym": "tlm_priority"
-                      },
-                      "len": 10
-                    },
-                    {
-                      "op": "mem_changed",
-                      "at": {
-                        "sym": "poll_enable"
-                      },
-                      "len": 6
-                    }
-                  ]
-                }
+                "op": "tlm",
+                "path": "channels.COMMS.antenna",
+                "cmp": "eq",
+                "value": "LGA"
               },
               {
-                "op": "any",
-                "of": [
-                  {
-                    "op": "mem_u16",
-                    "at": {
-                      "sym": "g_config",
-                      "field": "lga_rate_bps"
-                    },
-                    "cmp": "gt",
-                    "value": 64
-                  },
-                  {
-                    "op": "mem_u32",
-                    "at": {
-                      "sym": "g_config",
-                      "field": "tlm_period"
-                    },
-                    "cmp": "gt",
-                    "value": 500
-                  }
-                ]
-              },
-              {
-                "op": "channel_present",
-                "id": "RAD"
+                "op": "tlm",
+                "path": "channels.COMMS.budget",
+                "cmp": "gt",
+                "value": 40
               }
             ]
           },
-          "text": "RAD is back because the link got bigger. That's the next objective's fix. This one wants a decision about which data goes first when the link is tight."
+          "text": "RAD is getting through because the link got bigger, and that's the next objective's fix. This one wants a decision about which data goes first while the link is tight: put the link back as you found it, then choose what gets the room."
         }
       ]
     },

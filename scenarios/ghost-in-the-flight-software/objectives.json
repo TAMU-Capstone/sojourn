@@ -98,6 +98,28 @@
               "mask": 1,
               "cmp": "eq",
               "value": 1
+            },
+            {
+              "op": "not",
+              "of": {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 160
+                },
+                "len": 8
+              }
+            },
+            {
+              "op": "not",
+              "of": {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 172
+                },
+                "len": 4
+              }
             }
           ]
         }
@@ -130,6 +152,30 @@
             "len": 8
           },
           "text": "The recorder's configuration has been changed. That would stop the fill, but this objective is about the code: put the configuration back as you found it and patch the task itself."
+        },
+        {
+          "when": {
+            "op": "any",
+            "of": [
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 160
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_table",
+                  "offset": 172
+                },
+                "len": 4
+              }
+            ]
+          },
+          "text": "The recorder's entry in the scheduler has been changed, so the task no longer runs the way it was built to. That is a change to a table, not to the code: put the entry back as you found it and patch the task itself."
         },
         {
           "when": {
@@ -269,7 +315,98 @@
               {
                 "op": "mem_changed",
                 "at": {
+                  "sym": "task_wdg_pet"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_physics"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_sensor_poll"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_fault_monitor"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_camera"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_telemetry"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_cmd"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "cmd_poll_rx"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_heater"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_power_mgr"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
                   "sym": "task_acs"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "task_comms"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "image_process"
+                },
+                "len": 8
+              },
+              {
+                "op": "mem_changed",
+                "at": {
+                  "sym": "enter_safe"
                 },
                 "len": 8
               },
@@ -326,6 +463,39 @@
                 }
               }
             }
+          },
+          {
+            "op": "not",
+            "of": {
+              "op": "mem_changed",
+              "at": {
+                "sym": "scenario_injection_cave",
+                "offset": 3840
+              },
+              "len": 28
+            }
+          },
+          {
+            "op": "not",
+            "of": {
+              "op": "mem_changed",
+              "at": {
+                "sym": "task_table",
+                "offset": 208
+              },
+              "len": 4
+            }
+          },
+          {
+            "op": "mem_bits",
+            "at": {
+              "sym": "task_table",
+              "offset": 220
+            },
+            "width": 4,
+            "mask": 1,
+            "cmp": "eq",
+            "value": 1
           }
         ]
       },
@@ -367,6 +537,14 @@
               {
                 "op": "mem_changed",
                 "at": {
+                  "sym": "scenario_injection_cave",
+                  "offset": 3840
+                },
+                "len": 28
+              },
+              {
+                "op": "mem_changed",
+                "at": {
                   "sym": "task_table",
                   "offset": 208
                 },
@@ -385,7 +563,7 @@
               }
             ]
           },
-          "text": "You've found what keeps switching MAG off and disabled it. That fixes the symptom, but the objective is your own recurring code keeping MAG alive with the culprit still running. Put it back."
+          "text": "You've found what keeps switching MAG off and disabled or changed it. That fixes the symptom, but the objective is your own recurring code keeping MAG alive with the culprit still running as it was. Put it back."
         },
         {
           "when": {
@@ -406,7 +584,98 @@
                     {
                       "op": "mem_changed",
                       "at": {
+                        "sym": "task_wdg_pet"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_physics"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_sensor_poll"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_fault_monitor"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_camera"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_telemetry"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_cmd"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "cmd_poll_rx"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_heater"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_power_mgr"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
                         "sym": "task_acs"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "task_comms"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "image_process"
+                      },
+                      "len": 8
+                    },
+                    {
+                      "op": "mem_changed",
+                      "at": {
+                        "sym": "enter_safe"
                       },
                       "len": 8
                     },
@@ -442,7 +711,98 @@
                   {
                     "op": "mem_changed",
                     "at": {
+                      "sym": "task_wdg_pet"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_physics"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_sensor_poll"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_fault_monitor"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_camera"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_telemetry"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_cmd"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "cmd_poll_rx"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_heater"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_power_mgr"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
                       "sym": "task_acs"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "task_comms"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "image_process"
+                    },
+                    "len": 8
+                  },
+                  {
+                    "op": "mem_changed",
+                    "at": {
+                      "sym": "enter_safe"
                     },
                     "len": 8
                   },

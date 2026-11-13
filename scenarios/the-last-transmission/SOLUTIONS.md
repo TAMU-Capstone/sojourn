@@ -1,6 +1,6 @@
 # Solutions: The Last Transmission (Instructor Only; Do Not Ship)
 
-Revision 2. Each graded objective has two documented patch strategies (charter
+Revision 3. Each graded objective has two documented patch strategies (charter
 R9.2). Strategy A is `solution.txt` and strategy B is `solution-alt.txt`. Both
 are runnable with `firmware/tools/scenario_eval.py --script`, both complete
 every objective, and both are replayed by `conformance/run_conformance.py`.
@@ -21,12 +21,17 @@ in `tlm_priority` order that is being polled wins, which is MAG by default.
 | Idea | Move RAD (0x04) ahead of the other sensors | Stop polling MAG, IMU, THM, PWR. An unpolled channel has size 0 in the triage, so RAD is the first one that fits. |
 | Cost | Leaves the other science channels in polling | Four instruments go dark until there is bandwidth again |
 
-**Success**, `sustained` 3 frames: on LGA, RAD present, and *either* table changed.
-Both surfaces are data tables, so this remains a data-patch objective (R9.1).
+**Success**, `sustained` 3 frames: on LGA, RAD present, *either* table changed,
+and the downlink still squeezed (`COMMS.budget` ≤ 40). The budget check is what
+keeps this a data-patch objective (R9.1): without it, widening the link first
+lets RAD in and any edit to either table completes the objective. It reads the
+budget the probe reports rather than a config field, so it catches widening by
+`lga_rate_bps` or `tlm_period` alike.
 
 **Partials:**
 - A table was changed but RAD is still squeezed out (the byte-count hint).
-- RAD came back only because the link was widened, which is the next objective's fix.
+- The link has been widened (budget > 40): that is the next objective's fix; put
+  it back and decide what goes first while it is tight.
 
 ## `config-bandwidth` (configuration patch)
 
@@ -68,6 +73,15 @@ are replayed by the conformance suite.
 
 | Script | `data-priority` | `config-bandwidth` | Writes |
 |---|---|---|---|
-| `solution.txt` ✓ | complete, frame 7 | complete, frame 9 | 2 |
-| `solution-alt.txt` ✓ | complete, frame 6 | complete, frame 8 | 4 |
+| `solution.txt` ✓ | complete, frame 7 | complete, frame 12 | 2 |
+| `solution-alt.txt` ✓ | complete, frame 7 | complete, frame 14 | 4 |
 | Raise `lga_rate_bps` only (skip the data patch) | **active**, with the "next objective's fix" partial | locked | 1 |
+| Raise `lga_rate_bps`, then swap CAM/AUX in `tlm_priority` (rev. 3) | **active** | locked | 2 |
+
+Both solution scripts wait (free `NOOP`s) for `data-priority` to complete before
+widening the link. The reference evaluator applies one move per frame, and
+widening before the squeezed objective has held for 3 frames on LGA now keeps it
+active, which is the point of the revision-3 budget check. A player who widens
+early gets the partial telling them to put the link back; `config-bandwidth` is
+not shown to them until `data-priority` completes, so the briefing order already
+steers them the right way.

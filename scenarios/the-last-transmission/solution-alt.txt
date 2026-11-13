@@ -6,6 +6,17 @@
 # is not polled has size 0 in the triage, so RAD becomes the first science channel
 # that fits in the 9 bytes left after header, COMMS and HK.
 POKE 0x20019180 00000000
+# wait for data-priority to complete before widening the link: it is graded on the
+# squeezed 40-byte budget, and config-bandwidth is not revealed until it completes.
+# NOOP is free (charged to neither budget); the evaluator applies one move per frame.
+NOOP
+NOOP
+NOOP
+NOOP
+NOOP
+NOOP
+NOOP
+NOOP
 # config-bandwidth, strategy B: leave lga_rate_bps alone and slow the cadence instead.
 # budget = rate * tlm_period / (TICK_HZ * 8), so 5 s -> 10 s doubles it: 40 -> 80 B/frame.
 # g_config.tlm_period (u32, ticks at 100 Hz) = 1000
